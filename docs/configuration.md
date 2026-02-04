@@ -9,10 +9,18 @@
 ```json
 {
   "backendUrl": "https://printer.backend.miobeauty.uz",
+  "printerClientToken": "CHANGE-ME-PRINTER-CLIENT-TOKEN",
+  "clientId": "uuid",
   "printer": {
+    "name": "Sklad Xprinter XP-80T",
     "host": "192.168.0.100",
     "port": 9100,
     "encoding": "cp866"
+  },
+  "warehouse": {
+    "name": "Sklad",
+    "lat": null,
+    "lon": null
   }
 }
 ```
@@ -22,12 +30,14 @@
 Используются только как дефолт при первом запуске или если `settings.json` отсутствует.
 
 - `BACKEND_URL` — URL backend Socket.IO
+- `PRINTER_CLIENT_TOKEN` — общий токен для принтер‑клиентов (если включён на backend)
 - `PRINTER_IP` — host/IP принтера (LAN)
 - `PRINTER_PORT` — порт принтера (обычно `9100`)
 - `PRINTER_ENCODING` — кодировка текста для ESC/POS (`cp866` по умолчанию)
+- `PRINTER_NAME` — имя принтера (метаданные для backend/UI)
+- `WAREHOUSE_NAME` — имя склада (метаданные для backend/UI)
 
 ## Best practice
 
 - На складах не правим env: используем UI настройки.
 - Для dev без принтера: host=`127.0.0.1`, port=`9100` + `npm run fake-printer`.
-

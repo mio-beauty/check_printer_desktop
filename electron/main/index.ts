@@ -12,6 +12,8 @@ const __dirname = path.dirname(__filename);
 let mainWindow: BrowserWindow | null = null;
 let socket: Socket | null = null;
 let settings: Settings | null = null;
+let joined = false;
+let joinError: string | null = null;
 
 function isDev(): boolean {
   return !app.isPackaged;
@@ -36,12 +38,16 @@ function sendStatus() {
   const s = ensureSettings();
   mainWindow?.webContents.send("status", {
     connected: Boolean(socket?.connected),
+    joined,
+    joinError,
     backendUrl: s.backendUrl,
     printer: {
       host: s.printer.host || null,
       port: s.printer.port,
       encoding: s.printer.encoding,
+      name: s.printer.name,
     },
+    warehouse: s.warehouse,
   });
 }
 
@@ -52,14 +58,45 @@ function connectSocket() {
 
   socket.on("connect", () => {
     log("info", `Socket.IO подключён к ${url}`);
+    joined = false;
+    joinError = null;
+    const s = ensureSettings();
+    socket?.emit("join", {
+      room: "local_printer",
+      token: s.printerClientToken,
+      client_id: s.clientId,
+      printer: {
+        name: s.printer.name,
+        ip: s.printer.host,
+        port: s.printer.port,
+        version: "check_printer_desktop",
+      },
+      warehouse: s.warehouse,
+    });
     sendStatus();
   });
   socket.on("disconnect", () => {
     log("warn", "Socket.IO отключён");
+    joined = false;
     sendStatus();
   });
   socket.on("connect_error", (e) => {
     log("error", `Socket.IO ошибка подключения: ${String(e)}`);
+    joined = false;
+    sendStatus();
+  });
+
+  socket.on("join_ok", (payload) => {
+    joined = true;
+    joinError = null;
+    log("info", `join_ok: ${JSON.stringify(payload || {})}`);
+    sendStatus();
+  });
+
+  socket.on("join_error", (payload) => {
+    joined = false;
+    joinError = String((payload || {}).reason || "unknown");
+    log("error", `join_error: ${joinError}`);
     sendStatus();
   });
 
@@ -145,7 +182,14 @@ app.on("window-all-closed", () => {
 
 ipcMain.handle("getStatus", async () => {
   const s = ensureSettings();
-  return { connected: Boolean(socket?.connected), backendUrl: s.backendUrl, printer: { ...s.printer, host: s.printer.host || null } };
+  return {
+    connected: Boolean(socket?.connected),
+    joined,
+    joinError,
+    backendUrl: s.backendUrl,
+    printer: { ...s.printer, host: s.printer.host || null },
+    warehouse: s.warehouse,
+  };
 });
 
 ipcMain.handle("getSettings", async () => {

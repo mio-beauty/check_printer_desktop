@@ -48,7 +48,6 @@
 
 ## Важно (TODO для прод‑готовности)
 
-- Реализовать `join` в Socket.IO (room=`local_printer`, token/metadata), чтобы backend учитывал клиента как “подключённый принтер”.
+- `join` в Socket.IO уже используется (room=`local_printer`, token/metadata), backend учитывает клиента как “подключённый принтер”.
 - Добавить USB fallback (Windows spooler RAW).
 - Добавить автообновления (manifest + electron-updater).
-

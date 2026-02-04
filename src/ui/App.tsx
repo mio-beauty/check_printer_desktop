@@ -14,7 +14,10 @@ type UpdateState =
 
 type Settings = {
   backendUrl: string;
-  printer: { host: string; port: number; encoding: string };
+  printerClientToken: string | null;
+  clientId: string;
+  printer: { host: string; port: number; encoding: string; name: string };
+  warehouse: { name: string; lat: number | null; lon: number | null };
 };
 
 type LogEntry = { ts: string; level: "info" | "warn" | "error"; message: string };
@@ -24,13 +27,23 @@ declare global {
     checkPrinter?: {
       getStatus: () => Promise<{
         connected: boolean;
+        joined: boolean;
+        joinError: string | null;
         backendUrl: string;
-        printer: { host: string | null; port: number; encoding: string };
+        printer: { host: string | null; port: number; encoding: string; name: string };
+        warehouse: { name: string; lat: number | null; lon: number | null };
       }>;
       getSettings: () => Promise<Settings>;
       setSettings: (next: Partial<Settings>) => Promise<Settings>;
       onStatus: (
-        cb: (s: { connected: boolean; backendUrl: string; printer: { host: string | null; port: number; encoding: string } }) => void,
+        cb: (s: {
+          connected: boolean;
+          joined: boolean;
+          joinError: string | null;
+          backendUrl: string;
+          printer: { host: string | null; port: number; encoding: string; name: string };
+          warehouse: { name: string; lat: number | null; lon: number | null };
+        }) => void,
       ) => () => void;
       onLog: (cb: (e: LogEntry) => void) => () => void;
       getLogs: () => Promise<LogEntry[]>;
@@ -44,8 +57,11 @@ declare global {
 export default function App() {
   const [status, setStatus] = React.useState<{
     connected: boolean;
+    joined: boolean;
+    joinError: string | null;
     backendUrl: string;
-    printer: { host: string | null; port: number; encoding: string };
+    printer: { host: string | null; port: number; encoding: string; name: string };
+    warehouse: { name: string; lat: number | null; lon: number | null };
   } | null>(null);
   const [settings, setSettings] = React.useState<Settings | null>(null);
   const [logs, setLogs] = React.useState<LogEntry[]>([]);
@@ -132,7 +148,10 @@ export default function App() {
 
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant={status?.connected ? "default" : "destructive"}>
-              {status?.connected ? "подключено" : "нет соединения"}
+              {status?.connected ? "socket: ok" : "socket: нет"}
+            </Badge>
+            <Badge variant={status?.joined ? "secondary" : "destructive"}>
+              {status?.joined ? "join: ok" : `join: ${status?.joinError || "нет"}`}
             </Badge>
             <Button variant="outline" onClick={testPrint}>
               Тестовая печать
@@ -149,7 +168,8 @@ export default function App() {
             <CardDescription>
               Текущие параметры:{" "}
               <span className="font-mono">
-                {status?.printer?.host ?? "—"}:{status?.printer?.port ?? "—"} ({status?.printer?.encoding ?? "—"})
+                {status?.printer?.name ?? "—"} | {status?.printer?.host ?? "—"}:{status?.printer?.port ?? "—"} (
+                {status?.printer?.encoding ?? "—"})
               </span>
             </CardDescription>
           </CardHeader>
@@ -172,11 +192,29 @@ export default function App() {
               </div>
 
               <div className="grid gap-2">
-                <Label>Encoding</Label>
+                <Label>Token (printer client)</Label>
                 <Input
-                  value={settings?.printer.encoding ?? ""}
-                  onChange={(e) => setSettings((p) => (p ? { ...p, printer: { ...p.printer, encoding: e.target.value } } : null))}
-                  placeholder="cp866"
+                  value={settings?.printerClientToken ?? ""}
+                  onChange={(e) => setSettings((p) => (p ? { ...p, printerClientToken: e.target.value } : null))}
+                  placeholder="PRINTER_CLIENT_TOKEN"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Имя принтера</Label>
+                <Input
+                  value={settings?.printer.name ?? ""}
+                  onChange={(e) => setSettings((p) => (p ? { ...p, printer: { ...p.printer, name: e.target.value } } : null))}
+                  placeholder="Sklad Xprinter XP-80T"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Склад (warehouse)</Label>
+                <Input
+                  value={settings?.warehouse.name ?? ""}
+                  onChange={(e) => setSettings((p) => (p ? { ...p, warehouse: { ...p.warehouse, name: e.target.value } } : null))}
+                  placeholder="Sklad"
                 />
               </div>
 
@@ -202,6 +240,19 @@ export default function App() {
                   placeholder="9100"
                 />
               </div>
+
+              <div className="grid gap-2">
+                <Label>Encoding</Label>
+                <Input
+                  value={settings?.printer.encoding ?? ""}
+                  onChange={(e) => setSettings((p) => (p ? { ...p, printer: { ...p.printer, encoding: e.target.value } } : null))}
+                  placeholder="cp866"
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 text-xs text-muted-foreground">
+              client_id: <span className="font-mono">{settings?.clientId ?? "—"}</span>
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
