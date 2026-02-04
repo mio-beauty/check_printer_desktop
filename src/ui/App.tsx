@@ -215,19 +215,19 @@ export default function App() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div
-        className="flex items-center justify-between border-b bg-background px-3 py-2"
+        className="sticky top-0 z-50 flex items-center justify-between border-b bg-background px-2 py-1.5"
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       >
-        <div className="text-sm font-medium">CheckPrinterClient</div>
+        <div />
         <div className="flex items-center gap-1" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
           <Button variant="ghost" size="icon" onClick={windowMinimize} aria-label="Свернуть">
-            <Minus className="h-4 w-4" />
+            <Minus className="h-3.5 w-3.5" strokeWidth={1.5} />
           </Button>
           <Button variant="ghost" size="icon" onClick={windowToggleMaximize} aria-label="Развернуть">
-            <Square className="h-4 w-4" />
+            <Square className="h-3.5 w-3.5" strokeWidth={1.5} />
           </Button>
           <Button variant="ghost" size="icon" onClick={windowClose} aria-label="Закрыть">
-            <X className="h-4 w-4" />
+            <X className="h-3.5 w-3.5" strokeWidth={1.5} />
           </Button>
         </div>
       </div>

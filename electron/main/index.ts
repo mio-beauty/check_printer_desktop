@@ -1,14 +1,15 @@
 import { BrowserWindow, Menu, app, dialog, ipcMain } from "electron";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { io, Socket } from "socket.io-client";
-import * as updater from "electron-updater";
 import semver from "semver";
 import { buildEscPosJob } from "./escpos.js";
 import { sendToTcpPrinter } from "./lan_printer.js";
 import { loadSettings, saveSettings, Settings } from "./settings.js";
 
-const { autoUpdater } = updater;
+const require = createRequire(import.meta.url);
+const { autoUpdater } = require("electron-updater") as { autoUpdater: any };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -79,10 +80,16 @@ function sendStatus() {
 }
 
 function configureAutoUpdater() {
+  if (!autoUpdater || typeof autoUpdater.checkForUpdates !== "function") {
+    updateError = "autoUpdater недоступен (electron-updater не загрузился)";
+    log("error", updateError);
+    sendStatus();
+    return;
+  }
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
 
-  autoUpdater.on("update-available", (info) => {
+  autoUpdater.on("update-available", (info: any) => {
     updateAvailable = { forced: false, message: `Доступна новая версия: ${info.version}` };
     updateDownloading = false;
     updateProgress = null;
@@ -91,7 +98,7 @@ function configureAutoUpdater() {
     sendStatus();
   });
 
-  autoUpdater.on("update-not-available", (info) => {
+  autoUpdater.on("update-not-available", (info: any) => {
     updateAvailable = null;
     updateDownloading = false;
     updateProgress = null;
@@ -100,13 +107,13 @@ function configureAutoUpdater() {
     sendStatus();
   });
 
-  autoUpdater.on("download-progress", (p) => {
+  autoUpdater.on("download-progress", (p: any) => {
     updateDownloading = true;
     updateProgress = Math.max(0, Math.min(100, Number(p?.percent ?? 0)));
     sendStatus();
   });
 
-  autoUpdater.on("update-downloaded", (info) => {
+  autoUpdater.on("update-downloaded", (info: any) => {
     updateDownloading = false;
     updateProgress = 100;
     updateError = null;
@@ -114,7 +121,7 @@ function configureAutoUpdater() {
     sendStatus();
   });
 
-  autoUpdater.on("error", (err) => {
+  autoUpdater.on("error", (err: any) => {
     updateError = String(err);
     updateDownloading = false;
     updateProgress = null;
