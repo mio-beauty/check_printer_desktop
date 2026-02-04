@@ -4,59 +4,64 @@ import { fileURLToPath } from "node:url";
 import { io, Socket } from "socket.io-client";
 import { buildEscPosJob } from "./escpos.js";
 import { sendToTcpPrinter } from "./lan_printer.js";
+import { loadSettings, saveSettings, Settings } from "./settings.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 let mainWindow: BrowserWindow | null = null;
 let socket: Socket | null = null;
+let settings: Settings | null = null;
 
 function isDev(): boolean {
   return !app.isPackaged;
 }
 
-function getBackendUrl(): string {
-  return (process.env.BACKEND_URL || "https://printer.backend.miobeauty.uz").trim();
+type LogEntry = { ts: string; level: "info" | "warn" | "error"; message: string };
+const logs: LogEntry[] = [];
+
+function log(level: LogEntry["level"], message: string) {
+  const entry: LogEntry = { ts: new Date().toISOString(), level, message };
+  logs.push(entry);
+  if (logs.length > 300) logs.splice(0, logs.length - 300);
+  mainWindow?.webContents.send("log", entry);
 }
 
-function getPrinterHost(): string {
-  const v = (process.env.PRINTER_IP || "").trim();
-  if (v) return v;
-  // удобно для разработки без реального принтера: используем fake printer на localhost:9100
-  return isDev() ? "127.0.0.1" : "";
-}
-
-function getPrinterPort(): number {
-  const raw = (process.env.PRINTER_PORT || "").trim();
-  const parsed = Number(raw);
-  if (Number.isFinite(parsed) && parsed > 0) return parsed;
-  return 9100;
-}
-
-function getPrinterEncoding(): string {
-  return (process.env.PRINTER_ENCODING || "cp866").trim() || "cp866";
+function ensureSettings(): Settings {
+  if (!settings) settings = loadSettings();
+  return settings;
 }
 
 function sendStatus() {
+  const s = ensureSettings();
   mainWindow?.webContents.send("status", {
     connected: Boolean(socket?.connected),
-    backendUrl: getBackendUrl(),
+    backendUrl: s.backendUrl,
     printer: {
-      host: getPrinterHost() || null,
-      port: getPrinterPort(),
-      encoding: getPrinterEncoding(),
+      host: s.printer.host || null,
+      port: s.printer.port,
+      encoding: s.printer.encoding,
     },
   });
 }
 
 function connectSocket() {
-  const url = getBackendUrl();
+  const url = ensureSettings().backendUrl;
   socket?.disconnect();
   socket = io(url, { path: "/socket.io", transports: ["polling", "websocket"] });
 
-  socket.on("connect", () => sendStatus());
-  socket.on("disconnect", () => sendStatus());
-  socket.on("connect_error", () => sendStatus());
+  socket.on("connect", () => {
+    log("info", `Socket.IO подключён к ${url}`);
+    sendStatus();
+  });
+  socket.on("disconnect", () => {
+    log("warn", "Socket.IO отключён");
+    sendStatus();
+  });
+  socket.on("connect_error", (e) => {
+    log("error", `Socket.IO ошибка подключения: ${String(e)}`);
+    sendStatus();
+  });
 
   socket.on("print_text", async (payload) => {
     const orderId = payload?.id;
@@ -66,11 +71,13 @@ function connectSocket() {
     const text = String(payload?.text || "");
 
     try {
-      const host = getPrinterHost();
-      const port = getPrinterPort();
-      if (!host) throw new Error("Не настроен PRINTER_IP");
+      const s = ensureSettings();
+      const host = s.printer.host;
+      const port = s.printer.port;
+      if (!host) throw new Error("Не настроен принтер (host пустой)");
 
-      const job = buildEscPosJob(text, { encoding: getPrinterEncoding() });
+      log("info", `Печать заказа id=${orderId} number=${number} job=${printJobId} attempt=${payload?.attempt}`);
+      const job = buildEscPosJob(text, { encoding: s.printer.encoding });
       await sendToTcpPrinter(job, { host, port, timeoutMs: 5000 });
 
       socket?.emit("printed_true", {
@@ -79,6 +86,7 @@ function connectSocket() {
         print_job_id: printJobId,
         request_id: requestId,
       });
+      log("info", `Печать OK id=${orderId}`);
     } catch (e) {
       socket?.emit("printed_false", {
         id: orderId,
@@ -87,11 +95,13 @@ function connectSocket() {
         print_job_id: printJobId,
         request_id: requestId,
       });
+      log("error", `Печать FAIL id=${orderId}: ${String(e)}`);
     }
   });
 }
 
 async function createWindow() {
+  settings = loadSettings();
   mainWindow = new BrowserWindow({
     width: 1100,
     height: 720,
@@ -124,6 +134,7 @@ async function createWindow() {
 
   connectSocket();
   sendStatus();
+  log("info", "Приложение запущено");
 }
 
 app.whenReady().then(createWindow);
@@ -133,21 +144,31 @@ app.on("window-all-closed", () => {
 });
 
 ipcMain.handle("getStatus", async () => {
-  return {
-    connected: Boolean(socket?.connected),
-    backendUrl: getBackendUrl(),
-    printer: {
-      host: getPrinterHost() || null,
-      port: getPrinterPort(),
-      encoding: getPrinterEncoding(),
-    },
-  };
+  const s = ensureSettings();
+  return { connected: Boolean(socket?.connected), backendUrl: s.backendUrl, printer: { ...s.printer, host: s.printer.host || null } };
+});
+
+ipcMain.handle("getSettings", async () => {
+  return ensureSettings();
+});
+
+ipcMain.handle("setSettings", async (_evt, next: Partial<Settings>) => {
+  settings = saveSettings(next);
+  connectSocket();
+  sendStatus();
+  log("info", "Настройки сохранены");
+  return settings;
+});
+
+ipcMain.handle("getLogs", async () => {
+  return logs;
 });
 
 ipcMain.handle("testPrint", async (_evt, text: string | undefined) => {
-  const host = getPrinterHost();
-  const port = getPrinterPort();
-  if (!host) throw new Error("Не настроен PRINTER_IP");
+  const s = ensureSettings();
+  const host = s.printer.host;
+  const port = s.printer.port;
+  if (!host) throw new Error("Не настроен принтер (host пустой)");
   const sample =
     text ||
     [
@@ -159,8 +180,9 @@ ipcMain.handle("testPrint", async (_evt, text: string | undefined) => {
       "!NORMAL",
       "Спасибо!",
     ].join("\n");
-  const job = buildEscPosJob(sample, { encoding: getPrinterEncoding() });
+  const job = buildEscPosJob(sample, { encoding: s.printer.encoding });
   await sendToTcpPrinter(job, { host, port, timeoutMs: 5000 });
+  log("info", "Тестовая печать отправлена");
   return { ok: true };
 });
 
