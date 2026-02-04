@@ -2,11 +2,13 @@ import { BrowserWindow, app, dialog, ipcMain } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { io, Socket } from "socket.io-client";
-import { autoUpdater } from "electron-updater";
+import * as updater from "electron-updater";
 import semver from "semver";
 import { buildEscPosJob } from "./escpos.js";
 import { sendToTcpPrinter } from "./lan_printer.js";
 import { loadSettings, saveSettings, Settings } from "./settings.js";
+
+const { autoUpdater } = updater;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
