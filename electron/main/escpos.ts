@@ -1,4 +1,4 @@
-import * as iconv from "iconv-lite";
+import iconv from "iconv-lite";
 
 const INIT = Buffer.from([0x1b, 0x40]); // ESC @
 const CN_OFF = Buffer.from([0x1c, 0x2e]); // FS .
