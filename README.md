@@ -2,6 +2,9 @@
 
 Windows‑клиент для печати: Electron (main) + React (renderer).
 
+## Документация
+- `docs/README.md`
+
 ## Требования
 - Node.js 20+
 
