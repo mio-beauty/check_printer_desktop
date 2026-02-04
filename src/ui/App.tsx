@@ -67,6 +67,27 @@ export default function App() {
   const [logs, setLogs] = React.useState<LogEntry[]>([]);
   const [update, setUpdate] = React.useState<UpdateState>({ kind: "idle" });
 
+  const ensurePrinter = React.useCallback((p: Settings): Settings["printer"] => {
+    return (
+      p.printer ?? {
+        host: "",
+        port: 9100,
+        encoding: "cp866",
+        name: "CheckPrinterClient",
+      }
+    );
+  }, []);
+
+  const ensureWarehouse = React.useCallback((p: Settings): Settings["warehouse"] => {
+    return (
+      p.warehouse ?? {
+        name: "Sklad",
+        lat: null,
+        lon: null,
+      }
+    );
+  }, []);
+
   React.useEffect(() => {
     let off = () => {};
     let offLog = () => {};
@@ -203,8 +224,14 @@ export default function App() {
               <div className="grid gap-2">
                 <Label>Имя принтера</Label>
                 <Input
-                  value={settings?.printer.name ?? ""}
-                  onChange={(e) => setSettings((p) => (p ? { ...p, printer: { ...p.printer, name: e.target.value } } : null))}
+                  value={settings?.printer?.name ?? ""}
+                  onChange={(e) =>
+                    setSettings((p) => {
+                      if (!p) return null;
+                      const printer = ensurePrinter(p);
+                      return { ...p, printer: { ...printer, name: e.target.value } };
+                    })
+                  }
                   placeholder="Sklad Xprinter XP-80T"
                 />
               </div>
@@ -212,8 +239,14 @@ export default function App() {
               <div className="grid gap-2">
                 <Label>Склад (warehouse)</Label>
                 <Input
-                  value={settings?.warehouse.name ?? ""}
-                  onChange={(e) => setSettings((p) => (p ? { ...p, warehouse: { ...p.warehouse, name: e.target.value } } : null))}
+                  value={settings?.warehouse?.name ?? ""}
+                  onChange={(e) =>
+                    setSettings((p) => {
+                      if (!p) return null;
+                      const warehouse = ensureWarehouse(p);
+                      return { ...p, warehouse: { ...warehouse, name: e.target.value } };
+                    })
+                  }
                   placeholder="Sklad"
                 />
               </div>
@@ -221,8 +254,14 @@ export default function App() {
               <div className="grid gap-2">
                 <Label>Printer host</Label>
                 <Input
-                  value={settings?.printer.host ?? ""}
-                  onChange={(e) => setSettings((p) => (p ? { ...p, printer: { ...p.printer, host: e.target.value } } : null))}
+                  value={settings?.printer?.host ?? ""}
+                  onChange={(e) =>
+                    setSettings((p) => {
+                      if (!p) return null;
+                      const printer = ensurePrinter(p);
+                      return { ...p, printer: { ...printer, host: e.target.value } };
+                    })
+                  }
                   placeholder="192.168.0.100"
                 />
               </div>
@@ -231,10 +270,18 @@ export default function App() {
                 <Label>Printer port</Label>
                 <Input
                   inputMode="numeric"
-                  value={String(settings?.printer.port ?? "")}
+                  value={String(settings?.printer?.port ?? "")}
                   onChange={(e) =>
                     setSettings((p) =>
-                      p ? { ...p, printer: { ...p.printer, port: Number(e.target.value || 0) || 0 } } : null,
+                      p
+                        ? {
+                            ...p,
+                            printer: {
+                              ...ensurePrinter(p),
+                              port: Math.max(0, Number.parseInt(e.target.value || "0", 10) || 0),
+                            },
+                          }
+                        : null,
                     )
                   }
                   placeholder="9100"
@@ -244,8 +291,14 @@ export default function App() {
               <div className="grid gap-2">
                 <Label>Encoding</Label>
                 <Input
-                  value={settings?.printer.encoding ?? ""}
-                  onChange={(e) => setSettings((p) => (p ? { ...p, printer: { ...p.printer, encoding: e.target.value } } : null))}
+                  value={settings?.printer?.encoding ?? ""}
+                  onChange={(e) =>
+                    setSettings((p) => {
+                      if (!p) return null;
+                      const printer = ensurePrinter(p);
+                      return { ...p, printer: { ...printer, encoding: e.target.value } };
+                    })
+                  }
                   placeholder="cp866"
                 />
               </div>

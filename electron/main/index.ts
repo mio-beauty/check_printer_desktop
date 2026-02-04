@@ -54,7 +54,15 @@ function sendStatus() {
 function connectSocket() {
   const url = ensureSettings().backendUrl;
   socket?.disconnect();
-  socket = io(url, { path: "/socket.io", transports: ["polling", "websocket"] });
+  socket = io(url, {
+    path: "/socket.io",
+    transports: ["polling", "websocket"],
+    timeout: 10_000,
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1_000,
+    reconnectionDelayMax: 10_000,
+  });
 
   socket.on("connect", () => {
     log("info", `Socket.IO подключён к ${url}`);
