@@ -2,6 +2,8 @@ import { BrowserWindow, app, ipcMain } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { io, Socket } from "socket.io-client";
+import { buildEscPosJob } from "./escpos.js";
+import { sendToTcpPrinter } from "./lan_printer.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,10 +19,33 @@ function getBackendUrl(): string {
   return (process.env.BACKEND_URL || "https://printer.backend.miobeauty.uz").trim();
 }
 
+function getPrinterHost(): string {
+  const v = (process.env.PRINTER_IP || "").trim();
+  if (v) return v;
+  // удобно для разработки без реального принтера: используем fake printer на localhost:9100
+  return isDev() ? "127.0.0.1" : "";
+}
+
+function getPrinterPort(): number {
+  const raw = (process.env.PRINTER_PORT || "").trim();
+  const parsed = Number(raw);
+  if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  return 9100;
+}
+
+function getPrinterEncoding(): string {
+  return (process.env.PRINTER_ENCODING || "cp866").trim() || "cp866";
+}
+
 function sendStatus() {
   mainWindow?.webContents.send("status", {
     connected: Boolean(socket?.connected),
     backendUrl: getBackendUrl(),
+    printer: {
+      host: getPrinterHost() || null,
+      port: getPrinterPort(),
+      encoding: getPrinterEncoding(),
+    },
   });
 }
 
@@ -34,19 +59,35 @@ function connectSocket() {
   socket.on("connect_error", () => sendStatus());
 
   socket.on("print_text", async (payload) => {
-    // TODO: локальная печать (LAN 9100 + USB RAW) и ack обратно в backend.
-    // Сейчас только заглушка — не отправляем success, чтобы не было ложных "напечатано".
     const orderId = payload?.id;
     const number = payload?.number;
     const printJobId = payload?.print_job_id;
     const requestId = payload?.request_id;
-    socket?.emit("printed_false", {
-      id: orderId,
-      number,
-      error: "Печать ещё не настроена в desktop-клиенте",
-      print_job_id: printJobId,
-      request_id: requestId,
-    });
+    const text = String(payload?.text || "");
+
+    try {
+      const host = getPrinterHost();
+      const port = getPrinterPort();
+      if (!host) throw new Error("Не настроен PRINTER_IP");
+
+      const job = buildEscPosJob(text, { encoding: getPrinterEncoding() });
+      await sendToTcpPrinter(job, { host, port, timeoutMs: 5000 });
+
+      socket?.emit("printed_true", {
+        id: orderId,
+        number,
+        print_job_id: printJobId,
+        request_id: requestId,
+      });
+    } catch (e) {
+      socket?.emit("printed_false", {
+        id: orderId,
+        number,
+        error: String(e),
+        print_job_id: printJobId,
+        request_id: requestId,
+      });
+    }
   });
 }
 
@@ -55,14 +96,27 @@ async function createWindow() {
     width: 1100,
     height: 720,
     webPreferences: {
-      preload: path.join(__dirname, "..", "preload", "index.js"),
+      preload: path.join(__dirname, "..", "preload", "index.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
     },
   });
 
   if (isDev()) {
-    await mainWindow.loadURL("http://127.0.0.1:5173");
+    const devUrl = "http://127.0.0.1:5173";
+    let lastErr: unknown = null;
+    for (let i = 0; i < 30; i++) {
+      try {
+        // В dev иногда Electron стартует раньше Vite и ловит ERR_CONNECTION_REFUSED.
+        await mainWindow.loadURL(devUrl);
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = e;
+        await new Promise((r) => setTimeout(r, 300));
+      }
+    }
+    if (lastErr) throw lastErr;
     mainWindow.webContents.openDevTools({ mode: "detach" });
   } else {
     await mainWindow.loadFile(path.join(app.getAppPath(), "dist", "index.html"));
@@ -79,7 +133,35 @@ app.on("window-all-closed", () => {
 });
 
 ipcMain.handle("getStatus", async () => {
-  return { connected: Boolean(socket?.connected), backendUrl: getBackendUrl() };
+  return {
+    connected: Boolean(socket?.connected),
+    backendUrl: getBackendUrl(),
+    printer: {
+      host: getPrinterHost() || null,
+      port: getPrinterPort(),
+      encoding: getPrinterEncoding(),
+    },
+  };
+});
+
+ipcMain.handle("testPrint", async (_evt, text: string | undefined) => {
+  const host = getPrinterHost();
+  const port = getPrinterPort();
+  if (!host) throw new Error("Не настроен PRINTER_IP");
+  const sample =
+    text ||
+    [
+      "!CENTER ТЕСТ ПЕЧАТИ",
+      "!LEFT",
+      "Дата: " + new Date().toISOString(),
+      "Проверка связи с принтером",
+      "!BIG ИТОГО: 123 456 сум",
+      "!NORMAL",
+      "Спасибо!",
+    ].join("\n");
+  const job = buildEscPosJob(sample, { encoding: getPrinterEncoding() });
+  await sendToTcpPrinter(job, { host, port, timeoutMs: 5000 });
+  return { ok: true };
 });
 
 ipcMain.handle("checkUpdates", async () => {
@@ -91,4 +173,3 @@ ipcMain.handle("checkUpdates", async () => {
 ipcMain.handle("startUpdate", async () => {
   // TODO: downloadUpdate + quitAndInstall.
 });
-

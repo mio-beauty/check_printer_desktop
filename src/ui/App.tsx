@@ -10,8 +10,15 @@ type UpdateState =
 declare global {
   interface Window {
     checkPrinter?: {
-      getStatus: () => Promise<{ connected: boolean; backendUrl: string }>;
-      onStatus: (cb: (s: { connected: boolean; backendUrl: string }) => void) => () => void;
+      getStatus: () => Promise<{
+        connected: boolean;
+        backendUrl: string;
+        printer: { host: string | null; port: number; encoding: string };
+      }>;
+      onStatus: (
+        cb: (s: { connected: boolean; backendUrl: string; printer: { host: string | null; port: number; encoding: string } }) => void,
+      ) => () => void;
+      testPrint: (text?: string) => Promise<{ ok: boolean }>;
       checkUpdates: () => Promise<{ available: boolean; forced: boolean; message: string }>;
       startUpdate: () => Promise<void>;
     };
@@ -19,7 +26,11 @@ declare global {
 }
 
 export default function App() {
-  const [status, setStatus] = React.useState<{ connected: boolean; backendUrl: string } | null>(null);
+  const [status, setStatus] = React.useState<{
+    connected: boolean;
+    backendUrl: string;
+    printer: { host: string | null; port: number; encoding: string };
+  } | null>(null);
   const [update, setUpdate] = React.useState<UpdateState>({ kind: "idle" });
 
   React.useEffect(() => {
@@ -56,6 +67,19 @@ export default function App() {
     }
   };
 
+  const testPrint = async () => {
+    try {
+      if (!window.checkPrinter) {
+        alert("Ошибка: preload API недоступен (window.checkPrinter отсутствует).");
+        return;
+      }
+      await window.checkPrinter.testPrint();
+      alert("Тестовая печать отправлена (проверь fake-printer или принтер).");
+    } catch (e) {
+      alert(`Ошибка тестовой печати: ${String(e)}`);
+    }
+  };
+
   return (
     <div style={{ fontFamily: "system-ui", padding: 16, maxWidth: 760 }}>
       <h1 style={{ margin: "0 0 8px" }}>CheckPrinterClient</h1>
@@ -64,11 +88,18 @@ export default function App() {
           Backend: <code>{status?.backendUrl ?? "—"}</code>
         </span>
         <span>
+          Принтер:{" "}
+          <code>
+            {status?.printer?.host ?? "—"}:{status?.printer?.port ?? "—"} ({status?.printer?.encoding ?? "—"})
+          </code>
+        </span>
+        <span>
           Статус:{" "}
           <b style={{ color: status?.connected ? "#0a7" : "#c22" }}>
             {status?.connected ? "подключено" : "нет соединения"}
           </b>
         </span>
+        <button onClick={testPrint}>Тестовая печать</button>
         <button onClick={checkUpdates}>Проверить обновления</button>
       </div>
 
@@ -109,10 +140,9 @@ export default function App() {
       )}
 
       <p style={{ color: "#666" }}>
-        Следующий шаг: подключить Socket.IO и локальную печать (LAN 9100 + USB RAW), затем автообновления через GitHub
-        Releases.
+        Для теста без реального принтера: запусти <code>npm run fake-printer</code> и не задавай PRINTER_IP (в dev по
+        умолчанию будет 127.0.0.1:9100).
       </p>
     </div>
   );
 }
-

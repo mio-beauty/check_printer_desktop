@@ -1,12 +1,13 @@
-import { contextBridge, ipcRenderer } from "electron";
+const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("checkPrinter", {
   getStatus: () => ipcRenderer.invoke("getStatus"),
-  onStatus: (cb: (s: { connected: boolean; backendUrl: string }) => void) => {
-    const listener = (_: unknown, payload: { connected: boolean; backendUrl: string }) => cb(payload);
+  onStatus: (cb) => {
+    const listener = (_event, payload) => cb(payload);
     ipcRenderer.on("status", listener);
     return () => ipcRenderer.removeListener("status", listener);
   },
+  testPrint: (text) => ipcRenderer.invoke("testPrint", text),
   checkUpdates: () => ipcRenderer.invoke("checkUpdates"),
   startUpdate: () => ipcRenderer.invoke("startUpdate"),
 });

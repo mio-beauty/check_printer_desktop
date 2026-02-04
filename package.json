@@ -9,13 +9,16 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently -k \"vite\" \"npm run dev:electron\"",
-    "dev:electron": "wait-on tcp:5173 && electron .",
-    "build": "vite build && tsc -p tsconfig.electron.json",
+    "build:electron": "tsc -p tsconfig.electron.json && node scripts/copy_preload.mjs",
+    "dev:electron": "npm run -s build:electron && wait-on http-get://127.0.0.1:5173 && electron .",
+    "fake-printer": "node scripts/fake_printer_server.mjs",
+    "build": "vite build && npm run -s build:electron",
     "dist:win": "npm run build && electron-builder --win nsis --publish never",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.electron.json"
   },
   "dependencies": {
+    "iconv-lite": "^0.6.3",
     "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
@@ -64,4 +67,3 @@
     }
   }
 }
-
