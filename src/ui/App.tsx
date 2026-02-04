@@ -32,6 +32,8 @@ declare global {
         backendUrl: string;
         printer: { host: string | null; port: number; encoding: string; name: string };
         warehouse: { name: string; lat: number | null; lon: number | null };
+        appVersion?: string;
+        update?: { available: boolean; forced: boolean; message: string; downloading: boolean; error: string | null };
       }>;
       getSettings: () => Promise<Settings>;
       setSettings: (next: Partial<Settings>) => Promise<Settings>;
@@ -43,6 +45,8 @@ declare global {
           backendUrl: string;
           printer: { host: string | null; port: number; encoding: string; name: string };
           warehouse: { name: string; lat: number | null; lon: number | null };
+          appVersion?: string;
+          update?: { available: boolean; forced: boolean; message: string; downloading: boolean; error: string | null };
         }) => void,
       ) => () => void;
       onLog: (cb: (e: LogEntry) => void) => () => void;
@@ -62,10 +66,13 @@ export default function App() {
     backendUrl: string;
     printer: { host: string | null; port: number; encoding: string; name: string };
     warehouse: { name: string; lat: number | null; lon: number | null };
+    appVersion?: string;
+    update?: { available: boolean; forced: boolean; message: string; downloading: boolean; error: string | null };
   } | null>(null);
   const [settings, setSettings] = React.useState<Settings | null>(null);
   const [logs, setLogs] = React.useState<LogEntry[]>([]);
   const [update, setUpdate] = React.useState<UpdateState>({ kind: "idle" });
+  const forcedUpdate = Boolean(status?.update?.forced || (update.kind === "available" && update.forced));
 
   const ensurePrinter = React.useCallback((p: Settings): Settings["printer"] => {
     return (
@@ -109,6 +116,22 @@ export default function App() {
     };
   }, []);
 
+  React.useEffect(() => {
+    const u = status?.update;
+    if (!u) return;
+    if (u.error) {
+      setUpdate({ kind: "error", message: u.error });
+      return;
+    }
+    if (u.downloading) {
+      setUpdate({ kind: "downloading" });
+      return;
+    }
+    if (u.available) {
+      setUpdate({ kind: "available", forced: Boolean(u.forced), message: u.message || "Доступно обновление" });
+    }
+  }, [status?.update?.available, status?.update?.downloading, status?.update?.error, status?.update?.forced, status?.update?.message]);
+
   const checkUpdates = async () => {
     try {
       const res = await window.checkPrinter?.checkUpdates();
@@ -127,7 +150,7 @@ export default function App() {
     try {
       setUpdate({ kind: "downloading" });
       await window.checkPrinter?.startUpdate();
-      setUpdate({ kind: "ready", message: "Обновление скачано. Перезапустите приложение для установки." });
+      setUpdate({ kind: "ready", message: "Обновление скачано. Если вы выбрали “Перезапустить”, приложение перезапустится." });
     } catch (e) {
       setUpdate({ kind: "error", message: String(e) });
     }
@@ -165,6 +188,9 @@ export default function App() {
             <p className="text-sm text-muted-foreground">
               Backend: <span className="font-mono">{status?.backendUrl ?? "—"}</span>
             </p>
+            <p className="text-sm text-muted-foreground">
+              Версия: <span className="font-mono">{status?.appVersion ?? "—"}</span>
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -174,7 +200,7 @@ export default function App() {
             <Badge variant={status?.joined ? "secondary" : "destructive"}>
               {status?.joined ? "join: ok" : `join: ${status?.joinError || "нет"}`}
             </Badge>
-            <Button variant="outline" onClick={testPrint}>
+            <Button variant="outline" onClick={testPrint} disabled={forcedUpdate}>
               Тестовая печать
             </Button>
             <Button variant="secondary" onClick={checkUpdates}>
@@ -309,7 +335,7 @@ export default function App() {
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
-              <Button onClick={saveSettings} disabled={!settings}>
+              <Button onClick={saveSettings} disabled={!settings || forcedUpdate}>
                 Сохранить
               </Button>
               <Button

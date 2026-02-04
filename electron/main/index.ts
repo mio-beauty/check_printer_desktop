@@ -1,7 +1,9 @@
-import { BrowserWindow, app, ipcMain } from "electron";
+import { BrowserWindow, app, dialog, ipcMain } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { io, Socket } from "socket.io-client";
+import { autoUpdater } from "electron-updater";
+import semver from "semver";
 import { buildEscPosJob } from "./escpos.js";
 import { sendToTcpPrinter } from "./lan_printer.js";
 import { loadSettings, saveSettings, Settings } from "./settings.js";
@@ -14,6 +16,15 @@ let socket: Socket | null = null;
 let settings: Settings | null = null;
 let joined = false;
 let joinError: string | null = null;
+let updateAvailable: { forced: boolean; message: string } | null = null;
+let updateDownloading = false;
+let updateError: string | null = null;
+let updatePolicy: {
+  latestVersion: string | null;
+  minSupportedVersion: string | null;
+  downloadUrl: string | null;
+  notes: string | null;
+} | null = null;
 
 function isDev(): boolean {
   return !app.isPackaged;
@@ -48,7 +59,107 @@ function sendStatus() {
       name: s.printer.name,
     },
     warehouse: s.warehouse,
+    appVersion: app.getVersion(),
+    update: {
+      available: Boolean(updateAvailable),
+      forced: Boolean(updateAvailable?.forced),
+      message: updateAvailable?.message || "",
+      downloading: updateDownloading,
+      error: updateError,
+    },
   });
+}
+
+function configureAutoUpdater() {
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on("update-available", (info) => {
+    updateAvailable = { forced: false, message: `Доступна новая версия: ${info.version}` };
+    updateDownloading = false;
+    updateError = null;
+    log("info", `Update available: ${info.version}`);
+    sendStatus();
+  });
+
+  autoUpdater.on("update-not-available", (info) => {
+    updateAvailable = null;
+    updateDownloading = false;
+    updateError = null;
+    log("info", `No updates: ${info.version}`);
+    sendStatus();
+  });
+
+  autoUpdater.on("error", (err) => {
+    updateError = String(err);
+    updateDownloading = false;
+    log("error", `Update error: ${updateError}`);
+    sendStatus();
+  });
+}
+
+async function refreshUpdatePolicy() {
+  const s = ensureSettings();
+  const base = String(s.backendUrl || "").replace(/\/+$/, "");
+  if (!base) return;
+
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), 5000);
+  try {
+    const res = await fetch(`${base}/api/desktop/update-manifest`, {
+      method: "GET",
+      headers: { "accept": "application/json" },
+      signal: controller.signal,
+    });
+    if (!res.ok) return;
+    const json = await res.json().catch(() => null);
+    updatePolicy = {
+      latestVersion: (json?.latest_version || null) && String(json.latest_version),
+      minSupportedVersion: (json?.min_supported_version || null) && String(json.min_supported_version),
+      downloadUrl: (json?.download_url || null) && String(json.download_url),
+      notes: (json?.notes || null) && String(json.notes),
+    };
+
+    const current = semver.coerce(app.getVersion());
+    const latest = updatePolicy.latestVersion ? semver.coerce(updatePolicy.latestVersion) : null;
+    const minSupported = updatePolicy.minSupportedVersion ? semver.coerce(updatePolicy.minSupportedVersion) : null;
+
+    const forced = Boolean(current && minSupported && semver.lt(current, minSupported));
+    const availableByPolicy = Boolean(current && latest && semver.lt(current, latest));
+
+    if (!forced && !availableByPolicy) {
+      // keep message from updater (if any), but clear forced flag
+      if (updateAvailable) updateAvailable = { ...updateAvailable, forced: false };
+      sendStatus();
+      return;
+    }
+
+    const verLabel = updatePolicy.latestVersion || updatePolicy.minSupportedVersion || "";
+    const notes = (updatePolicy.notes || "").trim();
+    const msgBase = forced ? `Обновление обязательно (требуется версия >= ${updatePolicy.minSupportedVersion}).` : `Доступна новая версия: ${verLabel}`;
+    const msg = notes ? `${msgBase}\n${notes}` : msgBase;
+
+    updateAvailable = updateAvailable
+      ? { forced: updateAvailable.forced || forced, message: msg || updateAvailable.message }
+      : { forced, message: msg };
+
+    sendStatus();
+  } catch (e) {
+    log("warn", `update-manifest недоступен: ${String(e)}`);
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function checkForUpdates() {
+  try {
+    updateError = null;
+    await autoUpdater.checkForUpdates();
+  } catch (e) {
+    updateError = String(e);
+    log("error", `checkForUpdates failed: ${updateError}`);
+    sendStatus();
+  }
 }
 
 function connectSocket() {
@@ -116,6 +227,9 @@ function connectSocket() {
     const text = String(payload?.text || "");
 
     try {
+      if (updateAvailable?.forced) {
+        throw new Error("force_update_required");
+      }
       const s = ensureSettings();
       const host = s.printer.host;
       const port = s.printer.port;
@@ -177,6 +291,12 @@ async function createWindow() {
     await mainWindow.loadFile(path.join(app.getAppPath(), "dist", "index.html"));
   }
 
+  if (!isDev()) {
+    configureAutoUpdater();
+    void checkForUpdates();
+    void refreshUpdatePolicy();
+  }
+
   connectSocket();
   sendStatus();
   log("info", "Приложение запущено");
@@ -197,6 +317,14 @@ ipcMain.handle("getStatus", async () => {
     backendUrl: s.backendUrl,
     printer: { ...s.printer, host: s.printer.host || null },
     warehouse: s.warehouse,
+    appVersion: app.getVersion(),
+    update: {
+      available: Boolean(updateAvailable),
+      forced: Boolean(updateAvailable?.forced),
+      message: updateAvailable?.message || "",
+      downloading: updateDownloading,
+      error: updateError,
+    },
   };
 });
 
@@ -239,11 +367,43 @@ ipcMain.handle("testPrint", async (_evt, text: string | undefined) => {
 });
 
 ipcMain.handle("checkUpdates", async () => {
-  // TODO: подключим update-manifest.json + electron-updater.
-  // Пока возвращаем "нет обновления".
-  return { available: false, forced: false, message: "" };
+  if (isDev()) return { available: false, forced: false, message: "dev mode" };
+  await refreshUpdatePolicy();
+  await checkForUpdates();
+  return {
+    available: Boolean(updateAvailable),
+    forced: Boolean(updateAvailable?.forced),
+    message: updateAvailable?.message || "",
+  };
 });
 
 ipcMain.handle("startUpdate", async () => {
-  // TODO: downloadUpdate + quitAndInstall.
+  if (isDev()) return;
+  if (!updateAvailable) return;
+  updateError = null;
+  updateDownloading = true;
+  sendStatus();
+  await autoUpdater.downloadUpdate();
+  updateDownloading = false;
+  sendStatus();
+  const res = await (mainWindow
+    ? dialog.showMessageBox(mainWindow, {
+        type: "info",
+        message: "Обновление скачано",
+        detail: "Перезапустить приложение сейчас, чтобы установить обновление?",
+        buttons: ["Перезапустить", "Позже"],
+        defaultId: 0,
+        cancelId: 1,
+      })
+    : dialog.showMessageBox({
+        type: "info",
+        message: "Обновление скачано",
+        detail: "Перезапустить приложение сейчас, чтобы установить обновление?",
+        buttons: ["Перезапустить", "Позже"],
+        defaultId: 0,
+        cancelId: 1,
+      }));
+  if (res.response === 0) {
+    autoUpdater.quitAndInstall();
+  }
 });

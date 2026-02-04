@@ -37,6 +37,17 @@
 - `PRINTER_NAME` — имя принтера (метаданные для backend/UI)
 - `WAREHOUSE_NAME` — имя склада (метаданные для backend/UI)
 
+## Обновления (политика force/optional)
+
+Клиент читает политику обновлений с backend:
+- `GET /api/desktop/update-manifest`
+
+В проде эти значения задаются на backend (env):
+- `DESKTOP_LATEST_VERSION`
+- `DESKTOP_MIN_SUPPORTED_VERSION` (если версия клиента ниже — печать блокируется и требуется обновление)
+- `DESKTOP_DOWNLOAD_URL`
+- `DESKTOP_RELEASE_NOTES`
+
 ## Best practice
 
 - На складах не правим env: используем UI настройки.

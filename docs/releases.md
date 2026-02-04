@@ -39,5 +39,5 @@ Workflow: `.github/workflows/release.yml`
 
 ## TODO
 
-- Внедрить `electron-updater` и `update-manifest.json` (политика force/optional).
-
+- ✅ `electron-updater` подключён (GitHub Releases).
+- ⏳ `update-manifest.json` (политика force/optional) — следующий шаг.
