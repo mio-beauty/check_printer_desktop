@@ -1,4 +1,9 @@
 import React from "react";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
 
 type UpdateState =
   | { kind: "idle" }
@@ -115,113 +120,160 @@ export default function App() {
   };
 
   return (
-    <div style={{ fontFamily: "system-ui", padding: 16, maxWidth: 760 }}>
-      <h1 style={{ margin: "0 0 8px" }}>CheckPrinterClient</h1>
-      <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 12 }}>
-        <span>
-          Backend: <code>{status?.backendUrl ?? "—"}</code>
-        </span>
-        <span>
-          Принтер:{" "}
-          <code>
-            {status?.printer?.host ?? "—"}:{status?.printer?.port ?? "—"} ({status?.printer?.encoding ?? "—"})
-          </code>
-        </span>
-        <span>
-          Статус:{" "}
-          <b style={{ color: status?.connected ? "#0a7" : "#c22" }}>
-            {status?.connected ? "подключено" : "нет соединения"}
-          </b>
-        </span>
-        <button onClick={testPrint}>Тестовая печать</button>
-        <button onClick={checkUpdates}>Проверить обновления</button>
-      </div>
+    <div className="min-h-screen bg-background text-foreground">
+      <div className="mx-auto max-w-4xl space-y-4 p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold">CheckPrinterClient</h1>
+            <p className="text-sm text-muted-foreground">
+              Backend: <span className="font-mono">{status?.backendUrl ?? "—"}</span>
+            </p>
+          </div>
 
-      <div style={{ border: "1px solid #ddd", borderRadius: 8, padding: 12, marginBottom: 12 }}>
-        <div style={{ fontWeight: 700, marginBottom: 8 }}>Настройки</div>
-        <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: 8, alignItems: "center" }}>
-          <label>Backend URL</label>
-          <input
-            value={settings?.backendUrl ?? ""}
-            onChange={(e) => setSettings((p) => (p ? { ...p, backendUrl: e.target.value } : null))}
-            placeholder="https://printer.backend.miobeauty.uz"
-          />
-          <label>Printer host</label>
-          <input
-            value={settings?.printer.host ?? ""}
-            onChange={(e) => setSettings((p) => (p ? { ...p, printer: { ...p.printer, host: e.target.value } } : null))}
-            placeholder="127.0.0.1"
-          />
-          <label>Printer port</label>
-          <input
-            value={String(settings?.printer.port ?? "")}
-            onChange={(e) =>
-              setSettings((p) =>
-                p ? { ...p, printer: { ...p.printer, port: Number(e.target.value || 0) || 0 } } : null,
-              )
-            }
-            placeholder="9100"
-          />
-          <label>Encoding</label>
-          <input
-            value={settings?.printer.encoding ?? ""}
-            onChange={(e) => setSettings((p) => (p ? { ...p, printer: { ...p.printer, encoding: e.target.value } } : null))}
-            placeholder="cp866"
-          />
-        </div>
-        <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
-          <button onClick={saveSettings} disabled={!settings}>
-            Сохранить
-          </button>
-        </div>
-      </div>
-
-      {update.kind === "available" && (
-        <div
-          style={{
-            border: "1px solid #ddd",
-            padding: 12,
-            borderRadius: 8,
-            background: "#fff7e6",
-            marginBottom: 12,
-          }}
-        >
-          <div style={{ marginBottom: 8 }}>{update.message}</div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={startUpdate}>Обновить</button>
-            {!update.forced && <button onClick={() => setUpdate({ kind: "idle" })}>Не сейчас</button>}
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant={status?.connected ? "default" : "destructive"}>
+              {status?.connected ? "подключено" : "нет соединения"}
+            </Badge>
+            <Button variant="outline" onClick={testPrint}>
+              Тестовая печать
+            </Button>
+            <Button variant="secondary" onClick={checkUpdates}>
+              Проверить обновления
+            </Button>
           </div>
         </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Принтер</CardTitle>
+            <CardDescription>
+              Текущие параметры:{" "}
+              <span className="font-mono">
+                {status?.printer?.host ?? "—"}:{status?.printer?.port ?? "—"} ({status?.printer?.encoding ?? "—"})
+              </span>
+            </CardDescription>
+          </CardHeader>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Настройки</CardTitle>
+            <CardDescription>Сохраняются локально на этом ПК.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label>Backend URL</Label>
+                <Input
+                  value={settings?.backendUrl ?? ""}
+                  onChange={(e) => setSettings((p) => (p ? { ...p, backendUrl: e.target.value } : null))}
+                  placeholder="https://printer.backend.miobeauty.uz"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Encoding</Label>
+                <Input
+                  value={settings?.printer.encoding ?? ""}
+                  onChange={(e) => setSettings((p) => (p ? { ...p, printer: { ...p.printer, encoding: e.target.value } } : null))}
+                  placeholder="cp866"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Printer host</Label>
+                <Input
+                  value={settings?.printer.host ?? ""}
+                  onChange={(e) => setSettings((p) => (p ? { ...p, printer: { ...p.printer, host: e.target.value } } : null))}
+                  placeholder="192.168.0.100"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Printer port</Label>
+                <Input
+                  inputMode="numeric"
+                  value={String(settings?.printer.port ?? "")}
+                  onChange={(e) =>
+                    setSettings((p) =>
+                      p ? { ...p, printer: { ...p.printer, port: Number(e.target.value || 0) || 0 } } : null,
+                    )
+                  }
+                  placeholder="9100"
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button onClick={saveSettings} disabled={!settings}>
+                Сохранить
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() =>
+                  alert("Для теста без реального принтера: npm run fake-printer и host=127.0.0.1 port=9100.")
+                }
+              >
+                Как тестировать
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+      {update.kind === "available" && (
+        <Card className="border-amber-200 bg-amber-50">
+          <CardHeader>
+            <CardTitle>Доступно обновление</CardTitle>
+            <CardDescription>{update.message}</CardDescription>
+          </CardHeader>
+          <CardContent className="flex gap-2">
+            <Button onClick={startUpdate}>Обновить</Button>
+            {!update.forced && (
+              <Button variant="outline" onClick={() => setUpdate({ kind: "idle" })}>
+                Не сейчас
+              </Button>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {update.kind === "downloading" && (
-        <div style={{ border: "1px solid #ddd", padding: 12, borderRadius: 8, marginBottom: 12 }}>
-          Скачивание обновления...
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Скачивание обновления...</CardTitle>
+          </CardHeader>
+        </Card>
       )}
 
       {update.kind === "ready" && (
-        <div style={{ border: "1px solid #ddd", padding: 12, borderRadius: 8, marginBottom: 12 }}>
-          {update.message}
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Готово</CardTitle>
+            <CardDescription>{update.message}</CardDescription>
+          </CardHeader>
+        </Card>
       )}
 
       {update.kind === "error" && (
-        <div style={{ border: "1px solid #f99", padding: 12, borderRadius: 8, marginBottom: 12 }}>
-          Ошибка: {update.message}
-        </div>
+        <Card className="border-red-200 bg-red-50">
+          <CardHeader>
+            <CardTitle>Ошибка</CardTitle>
+            <CardDescription>{update.message}</CardDescription>
+          </CardHeader>
+        </Card>
       )}
 
-      <p style={{ color: "#666" }}>
-        Для теста без реального принтера: запусти <code>npm run fake-printer</code> и не задавай PRINTER_IP (в dev по
-        умолчанию будет 127.0.0.1:9100).
-      </p>
-
-      <div style={{ border: "1px solid #ddd", borderRadius: 8, padding: 12 }}>
-        <div style={{ fontWeight: 700, marginBottom: 8 }}>Логи</div>
-        <pre style={{ margin: 0, maxHeight: 220, overflow: "auto", background: "#111", color: "#ddd", padding: 8 }}>
-          {logs.map((l) => `${l.ts} [${l.level}] ${l.message}`).join("\n")}
-        </pre>
+        <Card>
+          <CardHeader>
+            <CardTitle>Логи</CardTitle>
+            <CardDescription>Последние события подключения/печати.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <pre className="max-h-64 overflow-auto rounded-md bg-black p-3 font-mono text-xs text-zinc-200">
+              {logs.map((l) => `${l.ts} [${l.level}] ${l.message}`).join("\n")}
+            </pre>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
