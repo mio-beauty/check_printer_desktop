@@ -25,8 +25,13 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Release (electron-builder)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --win nsis --publish always
+      - name: Package (electron-builder)
+        run: npx electron-builder --win nsis --publish never
 
+      - name: GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/*.exe
+            release/latest.yml
+            release/*.blockmap
