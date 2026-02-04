@@ -1,4 +1,4 @@
-import { BrowserWindow, app, dialog, ipcMain } from "electron";
+import { BrowserWindow, Menu, app, dialog, ipcMain } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { io, Socket } from "socket.io-client";
@@ -21,12 +21,14 @@ let joinError: string | null = null;
 let updateAvailable: { forced: boolean; message: string } | null = null;
 let updateDownloading = false;
 let updateError: string | null = null;
+let updateProgress: number | null = null;
 let updatePolicy: {
   latestVersion: string | null;
   minSupportedVersion: string | null;
   downloadUrl: string | null;
   notes: string | null;
 } | null = null;
+let windowIsMaximized = false;
 
 function isDev(): boolean {
   return !app.isPackaged;
@@ -67,7 +69,11 @@ function sendStatus() {
       forced: Boolean(updateAvailable?.forced),
       message: updateAvailable?.message || "",
       downloading: updateDownloading,
+      progress: updateProgress,
       error: updateError,
+    },
+    window: {
+      maximized: windowIsMaximized,
     },
   });
 }
@@ -79,6 +85,7 @@ function configureAutoUpdater() {
   autoUpdater.on("update-available", (info) => {
     updateAvailable = { forced: false, message: `Доступна новая версия: ${info.version}` };
     updateDownloading = false;
+    updateProgress = null;
     updateError = null;
     log("info", `Update available: ${info.version}`);
     sendStatus();
@@ -87,14 +94,30 @@ function configureAutoUpdater() {
   autoUpdater.on("update-not-available", (info) => {
     updateAvailable = null;
     updateDownloading = false;
+    updateProgress = null;
     updateError = null;
     log("info", `No updates: ${info.version}`);
+    sendStatus();
+  });
+
+  autoUpdater.on("download-progress", (p) => {
+    updateDownloading = true;
+    updateProgress = Math.max(0, Math.min(100, Number(p?.percent ?? 0)));
+    sendStatus();
+  });
+
+  autoUpdater.on("update-downloaded", (info) => {
+    updateDownloading = false;
+    updateProgress = 100;
+    updateError = null;
+    log("info", `Update downloaded: ${info.version}`);
     sendStatus();
   });
 
   autoUpdater.on("error", (err) => {
     updateError = String(err);
     updateDownloading = false;
+    updateProgress = null;
     log("error", `Update error: ${updateError}`);
     sendStatus();
   });
@@ -266,11 +289,24 @@ async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1100,
     height: 720,
+    frame: false,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "..", "preload", "index.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
     },
+  });
+  Menu.setApplicationMenu(null);
+  mainWindow.setMenuBarVisibility(false);
+  windowIsMaximized = mainWindow.isMaximized();
+  mainWindow.on("maximize", () => {
+    windowIsMaximized = true;
+    sendStatus();
+  });
+  mainWindow.on("unmaximize", () => {
+    windowIsMaximized = false;
+    sendStatus();
   });
 
   if (isDev()) {
@@ -325,7 +361,11 @@ ipcMain.handle("getStatus", async () => {
       forced: Boolean(updateAvailable?.forced),
       message: updateAvailable?.message || "",
       downloading: updateDownloading,
+      progress: updateProgress,
       error: updateError,
+    },
+    window: {
+      maximized: windowIsMaximized,
     },
   };
 });
@@ -384,6 +424,7 @@ ipcMain.handle("startUpdate", async () => {
   if (!updateAvailable) return;
   updateError = null;
   updateDownloading = true;
+  updateProgress = 0;
   sendStatus();
   await autoUpdater.downloadUpdate();
   updateDownloading = false;
@@ -408,4 +449,18 @@ ipcMain.handle("startUpdate", async () => {
   if (res.response === 0) {
     autoUpdater.quitAndInstall();
   }
+});
+
+ipcMain.handle("window:minimize", async () => {
+  mainWindow?.minimize();
+});
+
+ipcMain.handle("window:toggleMaximize", async () => {
+  if (!mainWindow) return;
+  if (mainWindow.isMaximized()) mainWindow.unmaximize();
+  else mainWindow.maximize();
+});
+
+ipcMain.handle("window:close", async () => {
+  mainWindow?.close();
 });

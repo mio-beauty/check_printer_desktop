@@ -4,6 +4,8 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { Progress } from "../components/ui/progress";
+import { Minus, Square, X } from "lucide-react";
 
 type UpdateState =
   | { kind: "idle" }
@@ -33,7 +35,8 @@ declare global {
         printer: { host: string | null; port: number; encoding: string; name: string };
         warehouse: { name: string; lat: number | null; lon: number | null };
         appVersion?: string;
-        update?: { available: boolean; forced: boolean; message: string; downloading: boolean; error: string | null };
+        update?: { available: boolean; forced: boolean; message: string; downloading: boolean; progress: number | null; error: string | null };
+        window?: { maximized: boolean };
       }>;
       getSettings: () => Promise<Settings>;
       setSettings: (next: Partial<Settings>) => Promise<Settings>;
@@ -46,7 +49,8 @@ declare global {
           printer: { host: string | null; port: number; encoding: string; name: string };
           warehouse: { name: string; lat: number | null; lon: number | null };
           appVersion?: string;
-          update?: { available: boolean; forced: boolean; message: string; downloading: boolean; error: string | null };
+          update?: { available: boolean; forced: boolean; message: string; downloading: boolean; progress: number | null; error: string | null };
+          window?: { maximized: boolean };
         }) => void,
       ) => () => void;
       onLog: (cb: (e: LogEntry) => void) => () => void;
@@ -54,6 +58,9 @@ declare global {
       testPrint: (text?: string) => Promise<{ ok: boolean }>;
       checkUpdates: () => Promise<{ available: boolean; forced: boolean; message: string }>;
       startUpdate: () => Promise<void>;
+      windowMinimize?: () => Promise<void>;
+      windowToggleMaximize?: () => Promise<void>;
+      windowClose?: () => Promise<void>;
     };
   }
 }
@@ -67,7 +74,8 @@ export default function App() {
     printer: { host: string | null; port: number; encoding: string; name: string };
     warehouse: { name: string; lat: number | null; lon: number | null };
     appVersion?: string;
-    update?: { available: boolean; forced: boolean; message: string; downloading: boolean; error: string | null };
+    update?: { available: boolean; forced: boolean; message: string; downloading: boolean; progress: number | null; error: string | null };
+    window?: { maximized: boolean };
   } | null>(null);
   const [settings, setSettings] = React.useState<Settings | null>(null);
   const [logs, setLogs] = React.useState<LogEntry[]>([]);
@@ -124,7 +132,7 @@ export default function App() {
       return;
     }
     if (u.downloading) {
-      setUpdate({ kind: "downloading" });
+      setUpdate({ kind: "downloading", progress: u.progress ?? undefined });
       return;
     }
     if (u.available) {
@@ -138,6 +146,7 @@ export default function App() {
       if (!res) return;
       if (!res.available) {
         setUpdate({ kind: "idle" });
+        alert(`Обновлений нет. Текущая версия: ${status?.appVersion ?? "—"}`);
         return;
       }
       setUpdate({ kind: "available", forced: res.forced, message: res.message });
@@ -179,12 +188,54 @@ export default function App() {
     }
   };
 
+  const windowMinimize = async () => {
+    try {
+      await window.checkPrinter?.windowMinimize?.();
+    } catch {
+      // ignore
+    }
+  };
+
+  const windowToggleMaximize = async () => {
+    try {
+      await window.checkPrinter?.windowToggleMaximize?.();
+    } catch {
+      // ignore
+    }
+  };
+
+  const windowClose = async () => {
+    try {
+      await window.checkPrinter?.windowClose?.();
+    } catch {
+      // ignore
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground">
+      <div
+        className="flex items-center justify-between border-b bg-background px-3 py-2"
+        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+      >
+        <div className="text-sm font-medium">CheckPrinterClient</div>
+        <div className="flex items-center gap-1" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+          <Button variant="ghost" size="icon" onClick={windowMinimize} aria-label="Свернуть">
+            <Minus className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={windowToggleMaximize} aria-label="Развернуть">
+            <Square className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={windowClose} aria-label="Закрыть">
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
       <div className="mx-auto max-w-4xl space-y-4 p-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold">CheckPrinterClient</h1>
+            <h1 className="text-2xl font-semibold">Статус</h1>
             <p className="text-sm text-muted-foreground">
               Backend: <span className="font-mono">{status?.backendUrl ?? "—"}</span>
             </p>
@@ -372,6 +423,10 @@ export default function App() {
           <CardHeader>
             <CardTitle>Скачивание обновления...</CardTitle>
           </CardHeader>
+          <CardContent className="space-y-2">
+            <Progress value={update.progress ?? 0} />
+            <div className="text-sm text-muted-foreground">{Math.round(update.progress ?? 0)}%</div>
+          </CardContent>
         </Card>
       )}
 

@@ -18,4 +18,7 @@ contextBridge.exposeInMainWorld("checkPrinter", {
   testPrint: (text) => ipcRenderer.invoke("testPrint", text),
   checkUpdates: () => ipcRenderer.invoke("checkUpdates"),
   startUpdate: () => ipcRenderer.invoke("startUpdate"),
+  windowMinimize: () => ipcRenderer.invoke("window:minimize"),
+  windowToggleMaximize: () => ipcRenderer.invoke("window:toggleMaximize"),
+  windowClose: () => ipcRenderer.invoke("window:close"),
 });
