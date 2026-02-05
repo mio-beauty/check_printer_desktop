@@ -105,9 +105,11 @@ export function WarehouseQueue(props: {
   const [limit] = React.useState(20);
   const [offset, setOffset] = React.useState(0);
 
-  const [busy, setBusy] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [refreshing, setRefreshing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [data, setData] = React.useState<OrdersResponse | null>(null);
+  const hasDataRef = React.useRef(false);
 
   const [selectedId, setSelectedId] = React.useState<number | null>(null);
   const [detailBusy, setDetailBusy] = React.useState(false);
@@ -117,15 +119,20 @@ export function WarehouseQueue(props: {
   const hasToken = Boolean(props.auth?.hasToken);
 
   React.useEffect(() => {
+    hasDataRef.current = data !== null;
+  }, [data]);
+
+  React.useEffect(() => {
     if (!props.active) return;
     setPhone(props.auth?.phone || "");
   }, [props.active, props.auth?.phone]);
 
-  const refresh = React.useCallback(async () => {
+  const refresh = React.useCallback(async (mode: "initial" | "manual" | "background" = "manual") => {
     if (!props.active) return;
     if (!hasToken) return;
-    setBusy(true);
-    setError(null);
+    if (mode === "background") setRefreshing(true);
+    else setLoading(true);
+    if (mode !== "background") setError(null);
     try {
       const json = (await window.checkPrinter?.warehouseOrders?.({
         status: statusFilter || null,
@@ -137,7 +144,8 @@ export function WarehouseQueue(props: {
     } catch (e) {
       setError(String(e));
     } finally {
-      setBusy(false);
+      setLoading(false);
+      setRefreshing(false);
     }
   }, [hasToken, limit, offset, props.active, qDebounced, statusFilter]);
 
@@ -182,14 +190,14 @@ export function WarehouseQueue(props: {
 
   React.useEffect(() => {
     if (!props.active) return;
-    void refresh();
+    void refresh(hasDataRef.current ? "manual" : "initial");
   }, [props.active, hasToken, statusFilter, qDebounced, offset, refresh]);
 
   React.useEffect(() => {
     if (!props.active) return;
     if (!hasToken) return;
     if (!props.online) return;
-    const t = setInterval(() => void refresh(), 5000);
+    const t = setInterval(() => void refresh("background"), 5000);
     return () => clearInterval(t);
   }, [props.active, hasToken, props.online, refresh]);
 
@@ -197,9 +205,11 @@ export function WarehouseQueue(props: {
     setLoginError(null);
     setLoginBusy(true);
     try {
-      await window.checkPrinter?.warehouseLogin?.(phone.trim().replace(/\\s+/g, ""), password);
+      if (!window.checkPrinter) throw new Error("preload API недоступен (window.checkPrinter отсутствует)");
+      if (!window.checkPrinter.warehouseLogin) throw new Error("warehouseLogin недоступен (нужна пересборка desktop/preload)");
+      await window.checkPrinter.warehouseLogin(phone.trim().replace(/\\s+/g, ""), password);
       setPassword("");
-      await refresh();
+      await refresh("initial");
     } catch (e) {
       setLoginError(String(e));
     } finally {
@@ -221,7 +231,7 @@ export function WarehouseQueue(props: {
   };
 
   const offline = !props.online;
-  const actionsDisabled = offline || props.forcedUpdate || busy;
+  const actionsDisabled = offline || props.forcedUpdate || loading;
 
   if (!props.active) return null;
 
@@ -341,7 +351,7 @@ export function WarehouseQueue(props: {
           <Badge variant="secondary">{props.auth?.phone || "—"}</Badge>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" onClick={refresh} disabled={!hasToken || busy}>
+          <Button variant="outline" onClick={() => void refresh("manual")} disabled={!hasToken || loading}>
             Обновить
           </Button>
           <Button variant="outline" onClick={onLogout}>
@@ -393,10 +403,10 @@ export function WarehouseQueue(props: {
               Частично
             </Button>
             <div className="ml-auto flex items-center gap-2">
-              <Button variant="outline" onClick={() => setOffset(Math.max(0, offset - limit))} disabled={offset === 0 || busy}>
+              <Button variant="outline" onClick={() => setOffset(Math.max(0, offset - limit))} disabled={offset === 0 || loading}>
                 ←
               </Button>
-              <Button variant="outline" onClick={() => setOffset(offset + limit)} disabled={busy || (data?.items?.length ?? 0) < limit}>
+              <Button variant="outline" onClick={() => setOffset(offset + limit)} disabled={loading || (data?.items?.length ?? 0) < limit}>
                 →
               </Button>
             </div>
@@ -405,8 +415,9 @@ export function WarehouseQueue(props: {
           {error && <Badge variant="destructive">{error}</Badge>}
 
           <div className="space-y-2">
-            {busy && <div className="text-sm text-muted-foreground">Загрузка…</div>}
-            {!busy && (data?.items?.length ?? 0) === 0 && <div className="text-sm text-muted-foreground">Пусто.</div>}
+            {loading && <div className="text-sm text-muted-foreground">Загрузка…</div>}
+            {!loading && refreshing && <div className="text-xs text-muted-foreground">Обновление…</div>}
+            {!loading && (data?.items?.length ?? 0) === 0 && <div className="text-sm text-muted-foreground">Пусто.</div>}
 
             {(data?.items || []).map((it) => {
               const label = statusLabel(it.picking_status);

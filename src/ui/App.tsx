@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../co
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Progress } from "../components/ui/progress";
+import { Sidebar, SidebarLabel, SidebarSection } from "../components/ui/sidebar";
 import { Minus, Square, X } from "lucide-react";
 import { WarehouseQueue } from "./WarehouseQueue";
 
@@ -248,10 +249,10 @@ export default function App() {
       </div>
 
       <div className="flex">
-        <aside className="w-56 shrink-0 border-r bg-background p-3">
+        <Sidebar>
           <div className="space-y-3">
-            <div className="space-y-2">
-              <div className="text-xs text-muted-foreground">Навигация</div>
+            <SidebarSection>
+              <SidebarLabel>Навигация</SidebarLabel>
               <Button
                 className="w-full justify-start"
                 variant={view === "status" ? "default" : "outline"}
@@ -266,10 +267,10 @@ export default function App() {
               >
                 Склад
               </Button>
-            </div>
+            </SidebarSection>
 
-            <div className="space-y-2">
-              <div className="text-xs text-muted-foreground">Связь</div>
+            <SidebarSection>
+              <SidebarLabel>Связь</SidebarLabel>
               <div className="flex flex-wrap gap-2">
                 <Badge variant={status?.connected ? "default" : "destructive"}>
                   {status?.connected ? "socket: ok" : "socket: нет"}
@@ -279,9 +280,9 @@ export default function App() {
                 </Badge>
               </div>
               {forcedUpdate && <Badge variant="destructive">Требуется обновление</Badge>}
-            </div>
+            </SidebarSection>
           </div>
-        </aside>
+        </Sidebar>
 
         <main className="min-w-0 flex-1">
           <div className="mx-auto max-w-4xl space-y-4 p-6">

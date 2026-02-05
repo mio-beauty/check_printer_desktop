@@ -146,6 +146,9 @@ async function apiFetchJson(
       log("warn", `HTTP ${res.status} ${opts.method || "GET"} ${url} ${brief ? `body=${JSON.stringify(brief)}` : ""}`.trim());
     }
     return { ok: res.ok, status: res.status, json: json ?? { raw } };
+  } catch (e) {
+    log("error", `HTTP FAIL ${opts.method || "GET"} ${url}: ${String(e)}`);
+    return { ok: false, status: 0, json: { raw: String(e) } };
   } finally {
     clearTimeout(t);
   }
@@ -587,6 +590,7 @@ ipcMain.handle("warehouse:login", async (_evt, payload: { phone: string; passwor
   const password = String(payload?.password || "");
   if (!phone || !password) throw new Error("phone and password required");
 
+  log("info", `Warehouse login start (${phone})`);
   const res = await apiFetchJson("/api/auth/login", {
     method: "POST",
     json: { phone, password },
@@ -594,6 +598,7 @@ ipcMain.handle("warehouse:login", async (_evt, payload: { phone: string; passwor
   });
   if (!res.ok) {
     const msg = res.json?.message || res.json?.error || res.json?.raw || `login failed (${res.status})`;
+    log("error", `Warehouse login failed (${phone}): ${String(msg)}`);
     throw new Error(String(msg));
   }
   const access = res.json?.access_token ? String(res.json.access_token) : "";
