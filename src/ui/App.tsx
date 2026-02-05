@@ -5,6 +5,7 @@ import { Sidebar, SidebarLabel, SidebarSection } from "../components/ui/sidebar"
 import { Minus, Square, X } from "lucide-react";
 import { WarehouseQueue } from "./WarehouseQueue";
 import { StatusView } from "./views/StatusView";
+import { LoginView } from "./views/LoginView";
 
 type UpdateState =
   | { kind: "idle" }
@@ -97,6 +98,7 @@ export default function App() {
   const [update, setUpdate] = React.useState<UpdateState>({ kind: "idle" });
   const forcedUpdate = Boolean(status?.update?.forced || (update.kind === "available" && update.forced));
   const [view, setView] = React.useState<"status" | "warehouse">("status");
+  const authed = Boolean(status?.warehouseAuth?.hasToken);
 
   React.useEffect(() => {
     let off = () => {};
@@ -228,66 +230,89 @@ export default function App() {
       </div>
 
       <div className="flex">
-        <Sidebar>
-          <div className="space-y-3">
-            <SidebarSection>
-              <SidebarLabel>Навигация</SidebarLabel>
-              <Button
-                className="w-full justify-start"
-                variant={view === "status" ? "default" : "outline"}
-                onClick={() => setView("status")}
-              >
-                Статус
-              </Button>
-              <Button
-                className="w-full justify-start"
-                variant={view === "warehouse" ? "default" : "outline"}
-                onClick={() => setView("warehouse")}
-              >
-                Склад
-              </Button>
-            </SidebarSection>
+        {authed && (
+          <Sidebar>
+            <div className="space-y-3">
+              <SidebarSection>
+                <SidebarLabel>Навигация</SidebarLabel>
+                <Button
+                  className="w-full justify-start"
+                  variant={view === "status" ? "default" : "outline"}
+                  onClick={() => setView("status")}
+                >
+                  Статус
+                </Button>
+                <Button
+                  className="w-full justify-start"
+                  variant={view === "warehouse" ? "default" : "outline"}
+                  onClick={() => setView("warehouse")}
+                >
+                  Склад
+                </Button>
+              </SidebarSection>
 
-            <SidebarSection>
-              <SidebarLabel>Связь</SidebarLabel>
-              <div className="flex flex-wrap gap-2">
-                <Badge variant={status?.connected ? "default" : "destructive"}>
-                  {status?.connected ? "socket: ok" : "socket: нет"}
-                </Badge>
-                <Badge variant={status?.joined ? "secondary" : "destructive"}>
-                  {status?.joined ? "join: ok" : `join: ${status?.joinError || "нет"}`}
-                </Badge>
-              </div>
-              {forcedUpdate && <Badge variant="destructive">Требуется обновление</Badge>}
-            </SidebarSection>
-          </div>
-        </Sidebar>
+              <SidebarSection>
+                <SidebarLabel>Связь</SidebarLabel>
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant={status?.connected ? "default" : "destructive"}>
+                    {status?.connected ? "socket: ok" : "socket: нет"}
+                  </Badge>
+                  <Badge variant={status?.joined ? "secondary" : "destructive"}>
+                    {status?.joined ? "join: ok" : `join: ${status?.joinError || "нет"}`}
+                  </Badge>
+                </div>
+                {forcedUpdate && <Badge variant="destructive">Требуется обновление</Badge>}
+              </SidebarSection>
+
+              <SidebarSection>
+                <SidebarLabel>Аккаунт</SidebarLabel>
+                <Badge variant="secondary">{status?.warehouseAuth?.phone || "—"}</Badge>
+                <Button
+                  className="w-full justify-start"
+                  variant="outline"
+                  onClick={() => void window.checkPrinter?.warehouseLogout?.()}
+                >
+                  Выйти
+                </Button>
+              </SidebarSection>
+            </div>
+          </Sidebar>
+        )}
 
         <main className="min-w-0 flex-1">
-          <div className="mx-auto max-w-4xl space-y-4 p-6">
-            {view === "warehouse" ? (
-              <WarehouseQueue
-                active
-                online={Boolean(status?.connected && status?.joined)}
-                forcedUpdate={forcedUpdate}
-                auth={status?.warehouseAuth ?? null}
-              />
-            ) : (
-              <StatusView
-                status={status}
-                settings={settings}
-                setSettings={setSettings}
-                logs={logs}
-                update={update}
-                setUpdate={setUpdate}
-                forcedUpdate={forcedUpdate}
-                onTestPrint={testPrint}
-                onCheckUpdates={checkUpdates}
-                onStartUpdate={startUpdate}
-                onSaveSettings={saveSettings}
-              />
-            )}
-          </div>
+          {!authed ? (
+            <LoginView
+              online={Boolean(status?.connected && status?.joined)}
+              forcedUpdate={forcedUpdate}
+              settings={settings}
+              setSettings={setSettings}
+            />
+          ) : (
+            <div className="mx-auto max-w-4xl space-y-4 p-6">
+              {view === "warehouse" ? (
+                <WarehouseQueue
+                  active
+                  online={Boolean(status?.connected && status?.joined)}
+                  forcedUpdate={forcedUpdate}
+                  auth={status?.warehouseAuth ?? null}
+                />
+              ) : (
+                <StatusView
+                  status={status}
+                  settings={settings}
+                  setSettings={setSettings}
+                  logs={logs}
+                  update={update}
+                  setUpdate={setUpdate}
+                  forcedUpdate={forcedUpdate}
+                  onTestPrint={testPrint}
+                  onCheckUpdates={checkUpdates}
+                  onStartUpdate={startUpdate}
+                  onSaveSettings={saveSettings}
+                />
+              )}
+            </div>
+          )}
         </main>
       </div>
     </div>
