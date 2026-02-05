@@ -1,4 +1,4 @@
-import { BrowserWindow, Menu, app, dialog, ipcMain, shell } from "electron";
+import { BrowserWindow, Menu, app, ipcMain } from "electron";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -272,7 +272,8 @@ function configureAutoUpdater() {
     sendStatus();
     return;
   }
-  autoUpdater.autoDownload = false;
+  // Background download; installation still requires restart.
+  autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on("update-available", (info: any) => {
@@ -283,6 +284,18 @@ function configureAutoUpdater() {
     updateError = null;
     log("info", `Update available: ${info.version}`);
     sendStatus();
+
+    // If policy says update is forced — start downloading immediately (no prompts).
+    if (policyUpdate?.forced) {
+      try {
+        updateDownloading = true;
+        updateProgress = 0;
+        sendStatus();
+        void autoUpdater.downloadUpdate();
+      } catch {
+        // handled by autoUpdater error events
+      }
+    }
   });
 
   autoUpdater.on("update-not-available", (info: any) => {
@@ -308,6 +321,15 @@ function configureAutoUpdater() {
     updateError = null;
     log("info", `Update downloaded: ${info.version}`);
     sendStatus();
+
+    // For forced updates: restart immediately and relaunch after install.
+    if (policyUpdate?.forced) {
+      try {
+        autoUpdater.quitAndInstall(true, true);
+      } catch {
+        // ignore
+      }
+    }
   });
 
   autoUpdater.on("error", (err: any) => {
@@ -642,13 +664,6 @@ ipcMain.handle("startUpdate", async () => {
   // Ensure we have the latest policy and/or updater metadata.
   await refreshUpdatePolicy();
   if (!updateAvailable) return;
-  // If policy provides a direct download URL and update is forced, prefer opening it.
-  // This works even when autoUpdater feed doesn't have the required version yet.
-  if (updateAvailable.forced && updatePolicy?.downloadUrl) {
-    log("info", `Forced update: opening downloadUrl ${updatePolicy.downloadUrl}`);
-    await shell.openExternal(updatePolicy.downloadUrl).catch(() => null);
-    return;
-  }
   updateError = null;
   updateDownloading = true;
   updateProgress = 0;
@@ -662,34 +677,20 @@ ipcMain.handle("startUpdate", async () => {
     updateDownloading = false;
     updateError = String(e);
     sendStatus();
+    // Avoid opening the installer automatically (user requested not to see it).
+    // Provide a link in the error so the user can download manually if needed.
     const url = updatePolicy?.downloadUrl;
-    if (url) {
-      log("warn", `startUpdate fallback: open downloadUrl ${url}`);
-      await shell.openExternal(url).catch(() => null);
-    }
+    if (url) updateError = `${updateError}\nСкачать установщик: ${url}`;
+    sendStatus();
     return;
   }
   updateDownloading = false;
   sendStatus();
-  const res = await (mainWindow
-    ? dialog.showMessageBox(mainWindow, {
-        type: "info",
-        message: "Обновление скачано",
-        detail: "Перезапустить приложение сейчас, чтобы установить обновление?",
-        buttons: ["Перезапустить", "Позже"],
-        defaultId: 0,
-        cancelId: 1,
-      })
-    : dialog.showMessageBox({
-        type: "info",
-        message: "Обновление скачано",
-        detail: "Перезапустить приложение сейчас, чтобы установить обновление?",
-        buttons: ["Перезапустить", "Позже"],
-        defaultId: 0,
-        cancelId: 1,
-      }));
-  if (res.response === 0) {
-    autoUpdater.quitAndInstall();
+  // Silent install with auto relaunch.
+  try {
+    autoUpdater.quitAndInstall(true, true);
+  } catch {
+    // ignore
   }
 });
 

@@ -46,7 +46,7 @@ export function ForcedUpdateView(props: Props) {
             <div className="whitespace-pre-wrap text-sm text-muted-foreground">{props.message || "Обновление обязательно."}</div>
             {props.notes ? <div className="whitespace-pre-wrap text-sm">{props.notes}</div> : null}
 
-            {props.error ? <div className="text-sm text-destructive">Ошибка обновления: {props.error}</div> : null}
+            {props.error ? <div className="whitespace-pre-wrap text-sm text-destructive">Ошибка обновления: {props.error}</div> : null}
 
             {pct !== null ? (
               <div className="space-y-2">
@@ -67,4 +67,3 @@ export function ForcedUpdateView(props: Props) {
     </div>
   );
 }
-
