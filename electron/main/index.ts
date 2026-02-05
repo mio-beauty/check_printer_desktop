@@ -1,4 +1,4 @@
-import { BrowserWindow, Menu, app, dialog, ipcMain } from "electron";
+import { BrowserWindow, Menu, app, dialog, ipcMain, shell } from "electron";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,6 +30,23 @@ let updatePolicy: {
   notes: string | null;
 } | null = null;
 let windowIsMaximized = false;
+let policyUpdate: { forced: boolean; message: string } | null = null;
+let updaterUpdate: { message: string } | null = null;
+
+function recomputeUpdateAvailable() {
+  const forced = Boolean(policyUpdate?.forced);
+  const any = Boolean(policyUpdate) || Boolean(updaterUpdate);
+  if (!any) {
+    updateAvailable = null;
+    return;
+  }
+
+  const message = forced
+    ? policyUpdate?.message || "Обновление обязательно."
+    : policyUpdate?.message || updaterUpdate?.message || "";
+
+  updateAvailable = { forced, message };
+}
 
 function isDev(): boolean {
   return !app.isPackaged;
@@ -108,6 +125,14 @@ function sendStatus() {
       downloading: updateDownloading,
       progress: updateProgress,
       error: updateError,
+      policy: updatePolicy
+        ? {
+            latestVersion: updatePolicy.latestVersion,
+            minSupportedVersion: updatePolicy.minSupportedVersion,
+            downloadUrl: updatePolicy.downloadUrl,
+            notes: updatePolicy.notes,
+          }
+        : null,
     },
     warehouseAuth: {
       phone: s.warehouseAuth?.phone || null,
@@ -124,8 +149,51 @@ async function apiFetchJson(
   opts: { method?: string; headers?: Record<string, string>; json?: any; timeoutMs?: number } = {},
 ): Promise<{ ok: boolean; status: number; json: any }> {
   const s = ensureSettings();
-  const base = String(s.backendUrl || "").replace(/\/+$/, "");
-  const url = /^https?:\/\//i.test(pathOrUrl) ? pathOrUrl : `${base}${pathOrUrl.startsWith("/") ? "" : "/"}${pathOrUrl}`;
+  const base = String(s.backendUrl || "").trim().replace(/\/+$/, "");
+
+  function formatFetchError(e: unknown): string {
+    const err = e as any;
+    const msg = err?.name && err?.message ? `${err.name}: ${err.message}` : String(e);
+    const cause = err?.cause as any;
+    if (!cause) return msg;
+
+    const parts: string[] = [];
+    const causeMsg =
+      cause?.name && cause?.message ? `${cause.name}: ${cause.message}` : (typeof cause === "string" ? cause : String(cause));
+    if (causeMsg && causeMsg !== msg) parts.push(causeMsg);
+
+    const code = cause?.code || err?.code;
+    if (code) parts.push(`code=${String(code)}`);
+
+    const syscall = cause?.syscall;
+    if (syscall) parts.push(`syscall=${String(syscall)}`);
+
+    const hostname = cause?.hostname;
+    if (hostname) parts.push(`host=${String(hostname)}`);
+
+    const address = cause?.address;
+    if (address) parts.push(`addr=${String(address)}`);
+
+    const port = cause?.port;
+    if (port) parts.push(`port=${String(port)}`);
+
+    return parts.length ? `${msg} (cause: ${parts.join(" ")})` : msg;
+  }
+
+  let url: string;
+  if (/^https?:\/\//i.test(pathOrUrl)) {
+    url = pathOrUrl;
+  } else {
+    if (!base) return { ok: false, status: 0, json: { raw: "Backend URL пустой (настройки). Укажи https://... и попробуй снова." } };
+    if (!/^https?:\/\//i.test(base)) {
+      return {
+        ok: false,
+        status: 0,
+        json: { raw: `Backend URL должен начинаться с http(s):// (сейчас: ${JSON.stringify(base)})` },
+      };
+    }
+    url = `${base}${pathOrUrl.startsWith("/") ? "" : "/"}${pathOrUrl}`;
+  }
 
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), opts.timeoutMs ?? 8000);
@@ -155,8 +223,9 @@ async function apiFetchJson(
     }
     return { ok: res.ok, status: res.status, json: json ?? { raw } };
   } catch (e) {
-    log("error", `HTTP FAIL ${opts.method || "GET"} ${url}: ${String(e)}`);
-    return { ok: false, status: 0, json: { raw: String(e) } };
+    const details = formatFetchError(e);
+    log("error", `HTTP FAIL ${opts.method || "GET"} ${url}: ${details}`);
+    return { ok: false, status: 0, json: { raw: details } };
   } finally {
     clearTimeout(t);
   }
@@ -207,7 +276,8 @@ function configureAutoUpdater() {
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on("update-available", (info: any) => {
-    updateAvailable = { forced: false, message: `Доступна новая версия: ${info.version}` };
+    updaterUpdate = { message: `Доступна новая версия: ${info.version}` };
+    recomputeUpdateAvailable();
     updateDownloading = false;
     updateProgress = null;
     updateError = null;
@@ -216,7 +286,9 @@ function configureAutoUpdater() {
   });
 
   autoUpdater.on("update-not-available", (info: any) => {
-    updateAvailable = null;
+    // Do NOT clear policy-based forced update here.
+    updaterUpdate = null;
+    recomputeUpdateAvailable();
     updateDownloading = false;
     updateProgress = null;
     updateError = null;
@@ -277,8 +349,8 @@ async function refreshUpdatePolicy() {
     const availableByPolicy = Boolean(current && latest && semver.lt(current, latest));
 
     if (!forced && !availableByPolicy) {
-      // keep message from updater (if any), but clear forced flag
-      if (updateAvailable) updateAvailable = { ...updateAvailable, forced: false };
+      policyUpdate = null;
+      recomputeUpdateAvailable();
       sendStatus();
       return;
     }
@@ -288,9 +360,8 @@ async function refreshUpdatePolicy() {
     const msgBase = forced ? `Обновление обязательно (требуется версия >= ${updatePolicy.minSupportedVersion}).` : `Доступна новая версия: ${verLabel}`;
     const msg = notes ? `${msgBase}\n${notes}` : msgBase;
 
-    updateAvailable = updateAvailable
-      ? { forced: updateAvailable.forced || forced, message: msg || updateAvailable.message }
-      : { forced, message: msg };
+    policyUpdate = { forced, message: msg };
+    recomputeUpdateAvailable();
 
     sendStatus();
   } catch (e) {
@@ -371,6 +442,12 @@ function connectSocket() {
   // Для склада: когда приходит новый заказ — подсказать UI обновиться без polling.
   socket.on("new_order", (_payload) => {
     sendWarehouseHint("new_order");
+  });
+
+  // Для склада: любые изменения сборки (start/scan/finish) — обновить список сразу.
+  socket.on("warehouse_update", (payload) => {
+    const kind = String(payload?.kind || "warehouse_update");
+    sendWarehouseHint(kind);
   });
 
   socket.on("print_text", async (payload) => {
@@ -460,11 +537,19 @@ async function createWindow() {
 
   if (!isDev()) {
     configureAutoUpdater();
+    // Policy can block the app if current version < minSupportedVersion.
+    await refreshUpdatePolicy();
     void checkForUpdates();
-    void refreshUpdatePolicy();
   }
 
-  connectSocket();
+  // If update is forced — do not connect to Socket.IO and do not perform any business actions.
+  // UI will show a blocking screen with the update CTA.
+  if (!updateAvailable?.forced) {
+    connectSocket();
+  } else {
+    joined = false;
+    joinError = "force_update_required";
+  }
   sendStatus();
   log("info", "Приложение запущено");
 }
@@ -554,12 +639,36 @@ ipcMain.handle("checkUpdates", async () => {
 
 ipcMain.handle("startUpdate", async () => {
   if (isDev()) return;
+  // Ensure we have the latest policy and/or updater metadata.
+  await refreshUpdatePolicy();
   if (!updateAvailable) return;
+  // If policy provides a direct download URL and update is forced, prefer opening it.
+  // This works even when autoUpdater feed doesn't have the required version yet.
+  if (updateAvailable.forced && updatePolicy?.downloadUrl) {
+    log("info", `Forced update: opening downloadUrl ${updatePolicy.downloadUrl}`);
+    await shell.openExternal(updatePolicy.downloadUrl).catch(() => null);
+    return;
+  }
   updateError = null;
   updateDownloading = true;
   updateProgress = 0;
   sendStatus();
-  await autoUpdater.downloadUpdate();
+  try {
+    if (!autoUpdater || typeof autoUpdater.downloadUpdate !== "function") {
+      throw new Error("autoUpdater недоступен");
+    }
+    await autoUpdater.downloadUpdate();
+  } catch (e) {
+    updateDownloading = false;
+    updateError = String(e);
+    sendStatus();
+    const url = updatePolicy?.downloadUrl;
+    if (url) {
+      log("warn", `startUpdate fallback: open downloadUrl ${url}`);
+      await shell.openExternal(url).catch(() => null);
+    }
+    return;
+  }
   updateDownloading = false;
   sendStatus();
   const res = await (mainWindow

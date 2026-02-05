@@ -40,4 +40,4 @@ Workflow: `.github/workflows/release.yml`
 ## TODO
 
 - ✅ `electron-updater` подключён (GitHub Releases).
-- ⏳ `update-manifest.json` (политика force/optional) — следующий шаг.
+- ✅ `GET /api/desktop/update-manifest` (политика force/optional) подключён через backend.

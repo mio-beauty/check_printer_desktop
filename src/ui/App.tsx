@@ -6,6 +6,7 @@ import { Minus, Square, X } from "lucide-react";
 import { WarehouseQueue } from "./WarehouseQueue";
 import { StatusView } from "./views/StatusView";
 import { LoginView } from "./views/LoginView";
+import { ForcedUpdateView } from "./views/ForcedUpdateView";
 
 type UpdateState =
   | { kind: "idle" }
@@ -29,6 +30,23 @@ type Settings = {
 
 type LogEntry = { ts: string; level: "info" | "warn" | "error"; message: string };
 
+type UpdatePolicy = {
+  latestVersion: string | null;
+  minSupportedVersion: string | null;
+  downloadUrl: string | null;
+  notes: string | null;
+};
+
+type StatusUpdate = {
+  available: boolean;
+  forced: boolean;
+  message: string;
+  downloading: boolean;
+  progress: number | null;
+  error: string | null;
+  policy?: UpdatePolicy | null;
+};
+
 declare global {
   interface Window {
     checkPrinter?: {
@@ -40,7 +58,7 @@ declare global {
         printer: { host: string | null; port: number; encoding: string; name: string };
         warehouse: { name: string; lat: number | null; lon: number | null };
         appVersion?: string;
-        update?: { available: boolean; forced: boolean; message: string; downloading: boolean; progress: number | null; error: string | null };
+        update?: StatusUpdate;
         warehouseAuth?: { phone: string | null; hasToken: boolean };
         window?: { maximized: boolean };
       }>;
@@ -55,7 +73,7 @@ declare global {
           printer: { host: string | null; port: number; encoding: string; name: string };
           warehouse: { name: string; lat: number | null; lon: number | null };
           appVersion?: string;
-          update?: { available: boolean; forced: boolean; message: string; downloading: boolean; progress: number | null; error: string | null };
+          update?: StatusUpdate;
           warehouseAuth?: { phone: string | null; hasToken: boolean };
           window?: { maximized: boolean };
         }) => void,
@@ -89,7 +107,7 @@ export default function App() {
     printer: { host: string | null; port: number; encoding: string; name: string };
     warehouse: { name: string; lat: number | null; lon: number | null };
     appVersion?: string;
-    update?: { available: boolean; forced: boolean; message: string; downloading: boolean; progress: number | null; error: string | null };
+    update?: StatusUpdate;
     warehouseAuth?: { phone: string | null; hasToken: boolean };
     window?: { maximized: boolean };
   } | null>(null);
@@ -99,6 +117,17 @@ export default function App() {
   const forcedUpdate = Boolean(status?.update?.forced || (update.kind === "available" && update.forced));
   const [view, setView] = React.useState<"status" | "warehouse">("status");
   const authed = Boolean(status?.warehouseAuth?.hasToken);
+  const online = Boolean(status?.connected && status?.joined);
+  const offlineReason = !status
+    ? "нет статуса"
+    : !status.connected
+      ? "нет соединения Socket.IO с backend"
+      : !status.joined
+        ? `не выполнен join: ${status.joinError || "unknown"}`
+        : null;
+  const currentVersion = String(status?.appVersion || "");
+  const minSupportedVersion = status?.update?.policy?.minSupportedVersion || null;
+  const policyNotes = status?.update?.policy?.notes || null;
 
   React.useEffect(() => {
     let off = () => {};
@@ -235,6 +264,29 @@ export default function App() {
             </Button>
           </div>
         </div>
+      </div>
+
+      <div className="flex">
+        {!forcedUpdate && authed && (
+          <Sidebar>
+            <div className="space-y-3">
+              <SidebarSection>
+                <SidebarLabel>Навигация</SidebarLabel>
+                <Button
+                  className="w-full justify-start"
+                  variant={view === "status" ? "default" : "outline"}
+                  onClick={() => setView("status")}
+                >
+                  Статус
+                </Button>
+                <Button
+                  className="w-full justify-start"
+                  variant={view === "warehouse" ? "default" : "outline"}
+                  onClick={() => setView("warehouse")}
+                >
+                  Склад
+                </Button>
+              </SidebarSection>
 
         <div className="flex flex-1 min-h-0 overflow-hidden">
           {authed && (
@@ -284,6 +336,51 @@ export default function App() {
                 </SidebarSection>
               </div>
             </Sidebar>
+        <main className="min-w-0 flex-1">
+          {forcedUpdate ? (
+            <ForcedUpdateView
+              currentVersion={currentVersion || "—"}
+              minSupportedVersion={minSupportedVersion}
+              message={status?.update?.message || "Обновление обязательно."}
+              notes={policyNotes}
+              downloading={Boolean(status?.update?.downloading)}
+              progress={status?.update?.progress ?? null}
+              error={status?.update?.error ?? null}
+              onUpdate={startUpdate}
+            />
+          ) : !authed ? (
+            <LoginView
+              online={Boolean(status?.connected && status?.joined)}
+              forcedUpdate={forcedUpdate}
+              settings={settings}
+              setSettings={setSettings}
+            />
+          ) : (
+            <div className="mx-auto max-w-4xl space-y-4 p-6">
+              {view === "warehouse" ? (
+                <WarehouseQueue
+                  active
+                  online={online}
+                  offlineReason={offlineReason}
+                  forcedUpdate={forcedUpdate}
+                  auth={status?.warehouseAuth ?? null}
+                />
+              ) : (
+                <StatusView
+                  status={status}
+                  settings={settings}
+                  setSettings={setSettings}
+                  logs={logs}
+                  update={update}
+                  setUpdate={setUpdate}
+                  forcedUpdate={forcedUpdate}
+                  onTestPrint={testPrint}
+                  onCheckUpdates={checkUpdates}
+                  onStartUpdate={startUpdate}
+                  onSaveSettings={saveSettings}
+                />
+              )}
+            </div>
           )}
 
           <main className="min-w-0 flex-1 overflow-auto">
