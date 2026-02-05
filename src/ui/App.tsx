@@ -70,6 +70,7 @@ declare global {
       warehouseOrders?: (params: { status?: string | null; q?: string | null; limit?: number; offset?: number }) => Promise<any>;
       warehouseOrderDetail?: (queueId: number) => Promise<any>;
       warehousePickingStart?: (queueId: number) => Promise<any>;
+      warehousePickingScan?: (queueId: number, code: string) => Promise<any>;
       windowMinimize?: () => Promise<void>;
       windowToggleMaximize?: () => Promise<void>;
       windowClose?: () => Promise<void>;

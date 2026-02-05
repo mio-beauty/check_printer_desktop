@@ -667,3 +667,20 @@ ipcMain.handle("warehouse:pickingStart", async (_evt, queueId: number) => {
   }
   return res.json;
 });
+
+ipcMain.handle("warehouse:pickingScan", async (_evt, payload: { queueId: number; code: string }) => {
+  const queueId = Number(payload?.queueId);
+  const code = String(payload?.code || "").trim();
+  if (!queueId || !code) throw new Error("queueId and code required");
+
+  const res = await warehouseRequestJson(`/api/warehouse/orders/${queueId}/picking/scan`, {
+    method: "POST",
+    json: { code },
+    timeoutMs: 12000,
+  });
+  if (!res.ok) {
+    const msg = res.json?.message || `picking/scan failed (${res.status})`;
+    throw new Error(String(msg));
+  }
+  return res.json;
+});

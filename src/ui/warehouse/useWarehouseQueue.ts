@@ -40,6 +40,11 @@ export function useWarehouseQueue(opts: {
   const [detailBusy, setDetailBusy] = React.useState(false);
   const [detailError, setDetailError] = React.useState<string | null>(null);
   const [detail, setDetail] = React.useState<OrderDetailResponse | null>(null);
+  const [scanCode, setScanCode] = React.useState("");
+  const [scanBusy, setScanBusy] = React.useState(false);
+  const [scanError, setScanError] = React.useState<string | null>(null);
+  const [lastScan, setLastScan] = React.useState<{ code: string; itemId: string; ts: string } | null>(null);
+  const [highlightItemId, setHighlightItemId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!opts.active) return;
@@ -107,6 +112,52 @@ export function useWarehouseQueue(opts: {
       }
     },
     [openDetail, opts.forcedUpdate, refresh],
+  );
+
+  const pickingScan = React.useCallback(
+    async (code: string) => {
+      const queueId = selectedId;
+      const clean = String(code || "").trim();
+      if (!queueId) return;
+      if (!clean) return;
+      if (opts.forcedUpdate) return;
+
+      setScanError(null);
+      setScanBusy(true);
+      try {
+        if (!window.checkPrinter?.warehousePickingScan) throw new Error("warehousePickingScan недоступен (нужна пересборка desktop/preload)");
+        const res = await window.checkPrinter.warehousePickingScan(queueId, clean);
+        const itemId = String(res?.item?.id || "");
+        const pickedQty = Number(res?.item?.picked_qty);
+        if (itemId && Number.isFinite(pickedQty)) {
+          setDetail((prev) => {
+            if (!prev?.picking?.items) return prev;
+            const nextItems = prev.picking.items.map((it) => (String(it.id) === itemId ? { ...it, picked_qty: pickedQty } : it));
+            const progressPicked = (prev.picking.progress?.picked ?? 0) + 1;
+            const progressOrdered = prev.picking.progress?.ordered ?? 0;
+            return {
+              ...prev,
+              picking: {
+                ...prev.picking,
+                items: nextItems,
+                progress: { picked: progressPicked, ordered: progressOrdered },
+              },
+            };
+          });
+          setLastScan({ code: clean, itemId, ts: new Date().toISOString() });
+          setHighlightItemId(itemId);
+          setTimeout(() => setHighlightItemId((cur) => (cur === itemId ? null : cur)), 1500);
+        }
+        setScanCode("");
+        // Подтянуть истинное состояние (на случай конкуренции/пересканов) — но без блокировок UI.
+        void openDetail(queueId);
+      } catch (e) {
+        setScanError(String(e));
+      } finally {
+        setScanBusy(false);
+      }
+    },
+    [openDetail, opts.forcedUpdate, selectedId],
   );
 
   React.useEffect(() => {
@@ -202,6 +253,12 @@ export function useWarehouseQueue(opts: {
     detail,
     openDetail,
     pickingStart,
+    scanCode,
+    setScanCode,
+    scanBusy,
+    scanError,
+    lastScan,
+    highlightItemId,
+    pickingScan,
   };
 }
-

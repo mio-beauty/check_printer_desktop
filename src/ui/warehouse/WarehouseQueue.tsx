@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../..
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { useWarehouseQueue } from "./useWarehouseQueue";
+import { cn } from "../../lib/utils";
 
 import type { WarehouseAuthStatus } from "./types";
 
@@ -124,6 +125,43 @@ export function WarehouseQueue(props: { active: boolean; online: boolean; forced
                   </Button>
                 )}
 
+                {sessionActive && (
+                  <div className="space-y-2 rounded-md border p-3">
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="grid gap-2">
+                        <Label>Скан-код</Label>
+                        <Input
+                          value={s.scanCode}
+                          onChange={(e) => s.setScanCode(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") void s.pickingScan(s.scanCode);
+                          }}
+                          placeholder="Отсканируй штрихкод/QR и нажми Enter"
+                          disabled={offline || props.forcedUpdate || s.scanBusy}
+                          autoFocus
+                        />
+                        <div className="text-xs text-muted-foreground">
+                          Сканер обычно вводит код как клавиатура и завершает Enter.
+                        </div>
+                      </div>
+                      <div className="flex flex-col justify-end gap-2">
+                        <Button
+                          onClick={() => void s.pickingScan(s.scanCode)}
+                          disabled={offline || props.forcedUpdate || s.scanBusy || !s.scanCode.trim()}
+                        >
+                          Применить
+                        </Button>
+                        {s.scanError && <Badge variant="destructive">{s.scanError}</Badge>}
+                        {s.lastScan && (
+                          <Badge variant="secondary">
+                            Последний скан: <span className="font-mono">{s.lastScan.code}</span>
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {s.detail.picking?.items?.length ? (
                   <div className="space-y-2">
                     <div className="text-sm text-muted-foreground">
@@ -132,16 +170,33 @@ export function WarehouseQueue(props: { active: boolean; online: boolean; forced
                     </div>
                     <div className="grid gap-2">
                       {s.detail.picking.items.map((it) => (
-                        <div key={it.id} className="flex items-center justify-between rounded-md border px-3 py-2">
+                        <div
+                          key={it.id}
+                          className={cn(
+                            "flex items-center justify-between rounded-md border px-3 py-2",
+                            (it.picked_qty ?? 0) > 0 && (it.picked_qty ?? 0) < (it.ordered_qty ?? 0) && "border-amber-200 bg-amber-50",
+                            (it.picked_qty ?? 0) >= (it.ordered_qty ?? 0) && "border-emerald-200 bg-emerald-50",
+                            s.highlightItemId === it.id && "ring-2 ring-primary",
+                          )}
+                        >
                           <div className="min-w-0">
                             <div className="truncate font-medium">{it.name}</div>
                             <div className="truncate text-xs text-muted-foreground">
                               {it.sku ? `SKU: ${it.sku}` : "SKU: —"} • штрихкодов: {it.barcodes?.length ?? 0}
                             </div>
                           </div>
-                          <Badge variant="secondary">
-                            {Math.round(it.picked_qty)}/{Math.round(it.ordered_qty)}
-                          </Badge>
+                          <div className="flex items-center gap-2">
+                            {(it.picked_qty ?? 0) >= (it.ordered_qty ?? 0) ? (
+                              <Badge variant="default">Готово</Badge>
+                            ) : (it.picked_qty ?? 0) > 0 ? (
+                              <Badge variant="secondary">В процессе</Badge>
+                            ) : (
+                              <Badge variant="secondary">Не начато</Badge>
+                            )}
+                            <Badge variant="secondary">
+                              {Math.round(it.picked_qty)}/{Math.round(it.ordered_qty)}
+                            </Badge>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -287,4 +342,3 @@ export function WarehouseQueue(props: { active: boolean; online: boolean; forced
     </div>
   );
 }
-
