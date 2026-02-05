@@ -1,7 +1,7 @@
 {
   "name": "check_printer_desktop",
   "private": true,
-  "version": "0.1.15",
+  "version": "0.1.16",
   "description": "Windows desktop client (Electron + React) for check printing",
   "main": "dist-electron/main/index.js",
   "author": "",
