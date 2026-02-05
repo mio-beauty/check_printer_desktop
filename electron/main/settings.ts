@@ -7,6 +7,11 @@ export type Settings = {
   backendUrl: string;
   printerClientToken: string | null;
   clientId: string;
+  warehouseAuth?: {
+    phone: string | null;
+    accessToken: string | null;
+    refreshToken: string | null;
+  };
   printer: {
     host: string;
     port: number;
@@ -42,6 +47,7 @@ function defaultSettings(): Settings {
     backendUrl,
     printerClientToken,
     clientId: crypto.randomUUID(),
+    warehouseAuth: { phone: null, accessToken: null, refreshToken: null },
     printer: { host, port, encoding, name },
     warehouse: { name: warehouseName, lat: null, lon: null },
   };
@@ -62,6 +68,13 @@ export function loadSettings(): Settings {
       printerClientToken:
         (typeof parsed?.printerClientToken === "string" ? parsed.printerClientToken : "")?.trim() || defaults.printerClientToken,
       clientId: String(parsed?.clientId || defaults.clientId),
+      warehouseAuth: {
+        phone: (typeof parsed?.warehouseAuth?.phone === "string" ? parsed.warehouseAuth.phone : "")?.trim() || null,
+        accessToken:
+          (typeof parsed?.warehouseAuth?.accessToken === "string" ? parsed.warehouseAuth.accessToken : "")?.trim() || null,
+        refreshToken:
+          (typeof parsed?.warehouseAuth?.refreshToken === "string" ? parsed.warehouseAuth.refreshToken : "")?.trim() || null,
+      },
       printer: {
         host: String(parsed?.printer?.host || defaults.printer.host),
         port: Number(parsed?.printer?.port || defaults.printer.port),
@@ -81,6 +94,7 @@ export function loadSettings(): Settings {
 
 export function saveSettings(partial: Partial<Settings>): Settings {
   const current = loadSettings();
+  const nextAuth = partial.warehouseAuth !== undefined ? partial.warehouseAuth : current.warehouseAuth;
   const merged: Settings = {
     backendUrl: partial.backendUrl !== undefined ? String(partial.backendUrl) : current.backendUrl,
     printerClientToken:
@@ -88,6 +102,11 @@ export function saveSettings(partial: Partial<Settings>): Settings {
         ? (String(partial.printerClientToken || "").trim() || null)
         : current.printerClientToken,
     clientId: partial.clientId !== undefined ? String(partial.clientId) : current.clientId,
+    warehouseAuth: {
+      phone: (typeof nextAuth?.phone === "string" ? nextAuth.phone : "")?.trim() || null,
+      accessToken: (typeof nextAuth?.accessToken === "string" ? nextAuth.accessToken : "")?.trim() || null,
+      refreshToken: (typeof nextAuth?.refreshToken === "string" ? nextAuth.refreshToken : "")?.trim() || null,
+    },
     printer: {
       host: partial.printer?.host !== undefined ? String(partial.printer.host) : current.printer.host,
       port: partial.printer?.port !== undefined ? Number(partial.printer.port) : current.printer.port,

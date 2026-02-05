@@ -21,4 +21,9 @@ contextBridge.exposeInMainWorld("checkPrinter", {
   windowMinimize: () => ipcRenderer.invoke("window:minimize"),
   windowToggleMaximize: () => ipcRenderer.invoke("window:toggleMaximize"),
   windowClose: () => ipcRenderer.invoke("window:close"),
+  warehouseLogin: (phone, password) => ipcRenderer.invoke("warehouse:login", { phone, password }),
+  warehouseLogout: () => ipcRenderer.invoke("warehouse:logout"),
+  warehouseOrders: (params) => ipcRenderer.invoke("warehouse:orders", params || {}),
+  warehouseOrderDetail: (queueId) => ipcRenderer.invoke("warehouse:orderDetail", queueId),
+  warehousePickingStart: (queueId) => ipcRenderer.invoke("warehouse:pickingStart", queueId),
 });

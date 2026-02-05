@@ -6,6 +6,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Progress } from "../components/ui/progress";
 import { Minus, Square, X } from "lucide-react";
+import { WarehouseQueue } from "./WarehouseQueue";
 
 type UpdateState =
   | { kind: "idle" }
@@ -18,6 +19,11 @@ type Settings = {
   backendUrl: string;
   printerClientToken: string | null;
   clientId: string;
+  warehouseAuth?: {
+    phone: string | null;
+    accessToken: string | null;
+    refreshToken: string | null;
+  };
   printer: { host: string; port: number; encoding: string; name: string };
   warehouse: { name: string; lat: number | null; lon: number | null };
 };
@@ -36,6 +42,7 @@ declare global {
         warehouse: { name: string; lat: number | null; lon: number | null };
         appVersion?: string;
         update?: { available: boolean; forced: boolean; message: string; downloading: boolean; progress: number | null; error: string | null };
+        warehouseAuth?: { phone: string | null; hasToken: boolean };
         window?: { maximized: boolean };
       }>;
       getSettings: () => Promise<Settings>;
@@ -50,6 +57,7 @@ declare global {
           warehouse: { name: string; lat: number | null; lon: number | null };
           appVersion?: string;
           update?: { available: boolean; forced: boolean; message: string; downloading: boolean; progress: number | null; error: string | null };
+          warehouseAuth?: { phone: string | null; hasToken: boolean };
           window?: { maximized: boolean };
         }) => void,
       ) => () => void;
@@ -58,6 +66,11 @@ declare global {
       testPrint: (text?: string) => Promise<{ ok: boolean }>;
       checkUpdates: () => Promise<{ available: boolean; forced: boolean; message: string }>;
       startUpdate: () => Promise<void>;
+      warehouseLogin?: (phone: string, password: string) => Promise<{ ok: boolean }>;
+      warehouseLogout?: () => Promise<{ ok: boolean }>;
+      warehouseOrders?: (params: { status?: string | null; q?: string | null; limit?: number; offset?: number }) => Promise<any>;
+      warehouseOrderDetail?: (queueId: number) => Promise<any>;
+      warehousePickingStart?: (queueId: number) => Promise<any>;
       windowMinimize?: () => Promise<void>;
       windowToggleMaximize?: () => Promise<void>;
       windowClose?: () => Promise<void>;
@@ -75,12 +88,14 @@ export default function App() {
     warehouse: { name: string; lat: number | null; lon: number | null };
     appVersion?: string;
     update?: { available: boolean; forced: boolean; message: string; downloading: boolean; progress: number | null; error: string | null };
+    warehouseAuth?: { phone: string | null; hasToken: boolean };
     window?: { maximized: boolean };
   } | null>(null);
   const [settings, setSettings] = React.useState<Settings | null>(null);
   const [logs, setLogs] = React.useState<LogEntry[]>([]);
   const [update, setUpdate] = React.useState<UpdateState>({ kind: "idle" });
   const forcedUpdate = Boolean(status?.update?.forced || (update.kind === "available" && update.forced));
+  const [view, setView] = React.useState<"status" | "warehouse">("status");
 
   const ensurePrinter = React.useCallback((p: Settings): Settings["printer"] => {
     return (
@@ -218,7 +233,14 @@ export default function App() {
         className="sticky top-0 z-50 flex items-center justify-between border-b bg-background px-2 py-1.5"
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       >
-        <div />
+        <div className="flex items-center gap-1" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+          <Button variant={view === "status" ? "default" : "ghost"} size="sm" onClick={() => setView("status")}>
+            Статус
+          </Button>
+          <Button variant={view === "warehouse" ? "default" : "ghost"} size="sm" onClick={() => setView("warehouse")}>
+            Склад
+          </Button>
+        </div>
         <div className="flex items-center gap-1" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
           <Button variant="ghost" size="icon" onClick={windowMinimize} aria-label="Свернуть">
             <Minus className="h-3.5 w-3.5" strokeWidth={1.5} />
@@ -233,6 +255,15 @@ export default function App() {
       </div>
 
       <div className="mx-auto max-w-4xl space-y-4 p-6">
+        {view === "warehouse" ? (
+          <WarehouseQueue
+            active
+            online={Boolean(status?.connected && status?.joined)}
+            forcedUpdate={forcedUpdate}
+            auth={status?.warehouseAuth ?? null}
+          />
+        ) : (
+          <>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-semibold">Статус</h1>
@@ -459,6 +490,8 @@ export default function App() {
             </pre>
           </CardContent>
         </Card>
+          </>
+        )}
       </div>
     </div>
   );

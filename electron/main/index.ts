@@ -38,6 +38,12 @@ function isDev(): boolean {
 type LogEntry = { ts: string; level: "info" | "warn" | "error"; message: string };
 const logs: LogEntry[] = [];
 
+type WarehouseAuth = {
+  phone: string | null;
+  accessToken: string | null;
+  refreshToken: string | null;
+};
+
 function log(level: LogEntry["level"], message: string) {
   const entry: LogEntry = { ts: new Date().toISOString(), level, message };
   logs.push(entry);
@@ -48,6 +54,28 @@ function log(level: LogEntry["level"], message: string) {
 function ensureSettings(): Settings {
   if (!settings) settings = loadSettings();
   return settings;
+}
+
+function warehouseAuth(): WarehouseAuth {
+  const s = ensureSettings();
+  return (
+    s.warehouseAuth ?? {
+      phone: null,
+      accessToken: null,
+      refreshToken: null,
+    }
+  );
+}
+
+function saveWarehouseAuth(next: Partial<WarehouseAuth>): WarehouseAuth {
+  const cur = warehouseAuth();
+  const merged: WarehouseAuth = {
+    phone: next.phone !== undefined ? (next.phone || null) : cur.phone,
+    accessToken: next.accessToken !== undefined ? (next.accessToken || null) : cur.accessToken,
+    refreshToken: next.refreshToken !== undefined ? (next.refreshToken || null) : cur.refreshToken,
+  };
+  settings = saveSettings({ warehouseAuth: merged } as Partial<Settings>);
+  return merged;
 }
 
 function sendStatus() {
@@ -73,10 +101,76 @@ function sendStatus() {
       progress: updateProgress,
       error: updateError,
     },
+    warehouseAuth: {
+      phone: s.warehouseAuth?.phone || null,
+      hasToken: Boolean(s.warehouseAuth?.accessToken),
+    },
     window: {
       maximized: windowIsMaximized,
     },
   });
+}
+
+async function apiFetchJson(
+  pathOrUrl: string,
+  opts: { method?: string; headers?: Record<string, string>; json?: any; timeoutMs?: number } = {},
+): Promise<{ ok: boolean; status: number; json: any }> {
+  const s = ensureSettings();
+  const base = String(s.backendUrl || "").replace(/\/+$/, "");
+  const url = /^https?:\/\//i.test(pathOrUrl) ? pathOrUrl : `${base}${pathOrUrl.startsWith("/") ? "" : "/"}${pathOrUrl}`;
+
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), opts.timeoutMs ?? 8000);
+  try {
+    const res = await fetch(url, {
+      method: opts.method || "GET",
+      headers: {
+        accept: "application/json",
+        ...(opts.json ? { "content-type": "application/json" } : {}),
+        ...(opts.headers || {}),
+      },
+      body: opts.json ? JSON.stringify(opts.json) : undefined,
+      signal: controller.signal,
+    });
+    const json = await res.json().catch(() => null);
+    return { ok: res.ok, status: res.status, json };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function warehouseRequestJson(
+  path: string,
+  opts: { method?: string; json?: any; timeoutMs?: number } = {},
+): Promise<{ ok: boolean; status: number; json: any }> {
+  const auth = warehouseAuth();
+  const headers: Record<string, string> = {};
+  if (auth.accessToken) headers.authorization = `Bearer ${auth.accessToken}`;
+
+  let res = await apiFetchJson(path, { method: opts.method, json: opts.json, timeoutMs: opts.timeoutMs, headers });
+  if (res.status !== 401) return res;
+
+  // try refresh once
+  if (!auth.refreshToken) return res;
+  try {
+    const refreshed = await apiFetchJson("/api/auth/refresh", {
+      method: "POST",
+      json: { refresh_token: auth.refreshToken },
+      timeoutMs: 8000,
+    });
+    if (!refreshed.ok || !refreshed.json?.access_token || !refreshed.json?.refresh_token) return res;
+    saveWarehouseAuth({
+      accessToken: String(refreshed.json.access_token),
+      refreshToken: String(refreshed.json.refresh_token),
+    });
+    const auth2 = warehouseAuth();
+    const headers2: Record<string, string> = { authorization: `Bearer ${auth2.accessToken}` };
+    res = await apiFetchJson(path, { method: opts.method, json: opts.json, timeoutMs: opts.timeoutMs, headers: headers2 });
+    sendStatus();
+    return res;
+  } catch {
+    return res;
+  }
 }
 
 function configureAutoUpdater() {
@@ -371,6 +465,10 @@ ipcMain.handle("getStatus", async () => {
       progress: updateProgress,
       error: updateError,
     },
+    warehouseAuth: {
+      phone: s.warehouseAuth?.phone || null,
+      hasToken: Boolean(s.warehouseAuth?.accessToken),
+    },
     window: {
       maximized: windowIsMaximized,
     },
@@ -470,4 +568,72 @@ ipcMain.handle("window:toggleMaximize", async () => {
 
 ipcMain.handle("window:close", async () => {
   mainWindow?.close();
+});
+
+ipcMain.handle("warehouse:login", async (_evt, payload: { phone: string; password: string }) => {
+  const phone = String(payload?.phone || "").trim();
+  const password = String(payload?.password || "");
+  if (!phone || !password) throw new Error("phone and password required");
+
+  const res = await apiFetchJson("/api/auth/login", {
+    method: "POST",
+    json: { phone, password },
+    timeoutMs: 12000,
+  });
+  if (!res.ok) {
+    const msg = res.json?.message || res.json?.error || `login failed (${res.status})`;
+    throw new Error(String(msg));
+  }
+  const access = res.json?.access_token ? String(res.json.access_token) : "";
+  const refresh = res.json?.refresh_token ? String(res.json.refresh_token) : "";
+  if (!access || !refresh) throw new Error("login: tokens missing");
+
+  saveWarehouseAuth({ phone, accessToken: access, refreshToken: refresh });
+  log("info", `Warehouse login OK (${phone})`);
+  sendStatus();
+  return { ok: true };
+});
+
+ipcMain.handle("warehouse:logout", async () => {
+  saveWarehouseAuth({ accessToken: null, refreshToken: null });
+  log("info", "Warehouse logout");
+  sendStatus();
+  return { ok: true };
+});
+
+ipcMain.handle(
+  "warehouse:orders",
+  async (_evt, params: { status?: string | null; q?: string | null; limit?: number; offset?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.status) qs.set("status", String(params.status));
+    if (params?.q) qs.set("q", String(params.q));
+    if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.offset) qs.set("offset", String(params.offset));
+    const url = `/api/warehouse/orders${qs.toString() ? `?${qs.toString()}` : ""}`;
+
+    const res = await warehouseRequestJson(url, { method: "GET", timeoutMs: 12000 });
+    if (!res.ok) {
+      const msg = res.json?.message || `warehouse/orders failed (${res.status})`;
+      throw new Error(String(msg));
+    }
+    return res.json;
+  },
+);
+
+ipcMain.handle("warehouse:orderDetail", async (_evt, queueId: number) => {
+  const res = await warehouseRequestJson(`/api/warehouse/orders/${Number(queueId)}`, { method: "GET", timeoutMs: 12000 });
+  if (!res.ok) {
+    const msg = res.json?.message || `warehouse/order failed (${res.status})`;
+    throw new Error(String(msg));
+  }
+  return res.json;
+});
+
+ipcMain.handle("warehouse:pickingStart", async (_evt, queueId: number) => {
+  const res = await warehouseRequestJson(`/api/warehouse/orders/${Number(queueId)}/picking/start`, { method: "POST", timeoutMs: 12000 });
+  if (!res.ok) {
+    const msg = res.json?.message || `picking/start failed (${res.status})`;
+    throw new Error(String(msg));
+  }
+  return res.json;
 });
