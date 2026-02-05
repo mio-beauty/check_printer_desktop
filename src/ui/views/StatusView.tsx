@@ -86,12 +86,6 @@ export function StatusView(props: {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant={props.status?.connected ? "default" : "destructive"}>
-            {props.status?.connected ? "socket: ok" : "socket: нет"}
-          </Badge>
-          <Badge variant={props.status?.joined ? "secondary" : "destructive"}>
-            {props.status?.joined ? "join: ok" : `join: ${props.status?.joinError || "нет"}`}
-          </Badge>
           <Button
             variant="outline"
             onClick={props.onTestPrint}

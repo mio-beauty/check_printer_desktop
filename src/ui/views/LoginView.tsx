@@ -69,7 +69,6 @@ export function LoginView(props: {
           <CardDescription>Без access token приложение недоступно.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!props.online && <Badge variant="destructive">Оффлайн: проверь Backend URL и интернет</Badge>}
           {props.forcedUpdate && <Badge variant="destructive">Требуется обновление — вход заблокирован</Badge>}
 
           <div className="grid gap-2">

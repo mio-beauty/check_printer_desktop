@@ -309,19 +309,6 @@ export default function App() {
               </SidebarSection>
 
               <SidebarSection>
-                <SidebarLabel>Связь</SidebarLabel>
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant={status?.connected ? "default" : "destructive"}>
-                    {status?.connected ? "socket: ok" : "socket: нет"}
-                  </Badge>
-                  <Badge variant={status?.joined ? "secondary" : "destructive"}>
-                    {status?.joined ? "join: ok" : `join: ${status?.joinError || "нет"}`}
-                  </Badge>
-                </div>
-                {forcedUpdate && <Badge variant="destructive">Требуется обновление</Badge>}
-              </SidebarSection>
-
-              <SidebarSection>
                 <SidebarLabel>Аккаунт</SidebarLabel>
                 <Badge variant="secondary">{status?.warehouseAuth?.phone || "—"}</Badge>
                 <Button
