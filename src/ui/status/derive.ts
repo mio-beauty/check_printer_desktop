@@ -1,4 +1,4 @@
-export type StatusBackend = { httpOk: boolean; httpError: string | null; checkedAt: string | null };
+export type StatusBackend = { httpOk: boolean; httpError: string | null; checkedAt: string | null; httpStatus?: number | null };
 export type PrinterReachability = { configured: boolean; ok: boolean; checkedAt: string | null; error: string | null };
 
 export type AppStatus = {
@@ -34,7 +34,8 @@ export function printerReachabilityLabel(r: PrinterReachability | undefined, hos
 export function warehouseOfflineReason(status: AppStatus | null, forcedUpdate: boolean): string | null {
   if (forcedUpdate) return "требуется обновление";
   if (!status) return "нет статуса";
-  if (status.backend && !status.backend.httpOk) return `backend недоступен: ${status.backend.httpError || "unknown"}`;
+  if (!status.backend?.checkedAt) return null;
+  if (!status.backend.httpOk) return `backend недоступен: ${status.backend.httpError || `HTTP ${status.backend.httpStatus ?? "unknown"}`}`;
   return null;
 }
 

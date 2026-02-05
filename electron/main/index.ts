@@ -30,13 +30,19 @@ let updatePolicy: {
   downloadUrl: string | null;
   notes: string | null;
 } | null = null;
-let backendHttp: { ok: boolean; checkedAt: string | null; error: string | null } = { ok: false, checkedAt: null, error: null };
+let backendHttp: { ok: boolean; checkedAt: string | null; error: string | null; status: number | null } = {
+  ok: false,
+  checkedAt: null,
+  error: null,
+  status: null,
+};
 let printerReachability: { configured: boolean; ok: boolean; checkedAt: string | null; error: string | null } = {
   configured: false,
   ok: false,
   checkedAt: null,
   error: null,
 };
+let backendProbeTimer: NodeJS.Timeout | null = null;
 let printerProbeTimer: NodeJS.Timeout | null = null;
 let windowIsMaximized = false;
 let policyUpdate: { forced: boolean; message: string } | null = null;
@@ -77,9 +83,9 @@ function log(level: LogEntry["level"], message: string) {
   mainWindow?.webContents.send("log", entry);
 }
 
-function setBackendHttpState(next: { ok: boolean; error: string | null; checkedAt: string }) {
-  const changed = backendHttp.ok !== next.ok || backendHttp.error !== next.error;
-  backendHttp = { ok: next.ok, error: next.error, checkedAt: next.checkedAt };
+function setBackendHttpState(next: { ok: boolean; error: string | null; checkedAt: string; status: number | null }) {
+  const changed = backendHttp.ok !== next.ok || backendHttp.error !== next.error || backendHttp.status !== next.status;
+  backendHttp = { ok: next.ok, error: next.error, checkedAt: next.checkedAt, status: next.status };
   if (!changed) return;
   log(next.ok ? "info" : "warn", next.ok ? "Backend HTTP: ok" : `Backend HTTP: fail (${next.error || "unknown"})`);
   sendStatus();
@@ -153,6 +159,36 @@ function schedulePrinterProbe() {
   printerProbeTimer = setInterval(() => void probePrinterReachabilityOnce(), 7000);
 }
 
+async function probeBackendHealthOnce() {
+  const checkedAt = new Date().toISOString();
+  const s = ensureSettings();
+  const base = String(s.backendUrl || "").trim().replace(/\/+$/, "");
+  if (!base) {
+    setBackendHttpState({ ok: false, error: "backend_url_empty", checkedAt, status: null });
+    return;
+  }
+
+  const res = await apiFetchJson("/api/health", { timeoutMs: 2500 });
+  if (res.status === 0) {
+    setBackendHttpState({ ok: false, error: res.json?.raw ? String(res.json.raw) : "fetch_failed", checkedAt, status: 0 });
+    return;
+  }
+
+  if (res.ok) {
+    setBackendHttpState({ ok: true, error: null, checkedAt, status: res.status });
+    return;
+  }
+
+  const err = res.json?.error || res.json?.message || res.json?.raw || `HTTP ${res.status}`;
+  setBackendHttpState({ ok: false, error: String(err), checkedAt, status: res.status });
+}
+
+function scheduleBackendProbe() {
+  if (backendProbeTimer) clearInterval(backendProbeTimer);
+  void probeBackendHealthOnce();
+  backendProbeTimer = setInterval(() => void probeBackendHealthOnce(), 5000);
+}
+
 function sendWarehouseHint(reason: string) {
   try {
     mainWindow?.webContents.send("warehouse:hint", { reason, ts: new Date().toISOString() });
@@ -199,6 +235,7 @@ function sendStatus() {
       httpOk: backendHttp.ok,
       httpError: backendHttp.error,
       checkedAt: backendHttp.checkedAt,
+      httpStatus: backendHttp.status,
     },
     printer: {
       host: s.printer.host || null,
@@ -299,7 +336,6 @@ async function apiFetchJson(
       body: opts.json ? JSON.stringify(opts.json) : undefined,
       signal: controller.signal,
     });
-    setBackendHttpState({ ok: true, error: null, checkedAt: new Date().toISOString() });
     const raw = await res.text().catch(() => "");
     let json: any = null;
     if (raw) {
@@ -317,7 +353,6 @@ async function apiFetchJson(
   } catch (e) {
     const details = formatFetchError(e);
     log("error", `HTTP FAIL ${opts.method || "GET"} ${url}: ${details}`);
-    setBackendHttpState({ ok: false, error: details, checkedAt: new Date().toISOString() });
     return { ok: false, status: 0, json: { raw: details } };
   } finally {
     clearTimeout(t);
@@ -633,7 +668,9 @@ async function createWindow() {
     void checkForUpdates();
   }
 
+  scheduleBackendProbe();
   schedulePrinterProbe();
+  scheduleBackendProbe();
 
   // If update is forced — do not connect to Socket.IO and do not perform any business actions.
   // UI will show a blocking screen with the update CTA.
@@ -664,6 +701,7 @@ ipcMain.handle("getStatus", async () => {
       httpOk: backendHttp.ok,
       httpError: backendHttp.error,
       checkedAt: backendHttp.checkedAt,
+      httpStatus: backendHttp.status,
     },
     printer: { ...s.printer, host: s.printer.host || null, reachability: printerReachability },
     warehouse: s.warehouse,

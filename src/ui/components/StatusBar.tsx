@@ -9,6 +9,7 @@ export function StatusBar(props: {
   forcedUpdate: boolean;
   onStartUpdate?: () => void;
 }) {
+  const backendChecked = Boolean(props.status?.backend?.checkedAt);
   const backendOk = Boolean(props.status?.backend?.httpOk);
   const socketOk = Boolean(props.status?.connected);
   const joinOk = Boolean(props.status?.joined);
@@ -46,7 +47,9 @@ export function StatusBar(props: {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant={backendOk ? "default" : "destructive"}>backend: {backendOk ? "ok" : "нет"}</Badge>
+            <Badge variant={!backendChecked ? "outline" : backendOk ? "default" : "destructive"}>
+              backend: {!backendChecked ? "—" : backendOk ? "ok" : "нет"}
+            </Badge>
             <Badge variant={socketOk ? "default" : "destructive"}>socket: {socketOk ? "ok" : "нет"}</Badge>
             <Badge variant={joinOk ? "secondary" : "destructive"}>join: {joinOk ? "ok" : joinLabel}</Badge>
             <Badge variant={printerOk ? "secondary" : "destructive"}>printer: {printerOk ? "ok" : printerLabel}</Badge>

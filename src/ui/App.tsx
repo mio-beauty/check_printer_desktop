@@ -57,7 +57,7 @@ declare global {
         joined: boolean;
         joinError: string | null;
         backendUrl: string;
-        backend?: { httpOk: boolean; httpError: string | null; checkedAt: string | null };
+        backend?: { httpOk: boolean; httpError: string | null; checkedAt: string | null; httpStatus?: number | null };
         printer: {
           host: string | null;
           port: number;
@@ -79,7 +79,7 @@ declare global {
           joined: boolean;
           joinError: string | null;
           backendUrl: string;
-          backend?: { httpOk: boolean; httpError: string | null; checkedAt: string | null };
+          backend?: { httpOk: boolean; httpError: string | null; checkedAt: string | null; httpStatus?: number | null };
           printer: {
             host: string | null;
             port: number;
@@ -122,7 +122,7 @@ export default function App() {
     joined: boolean;
     joinError: string | null;
     backendUrl: string;
-    backend?: { httpOk: boolean; httpError: string | null; checkedAt: string | null };
+    backend?: { httpOk: boolean; httpError: string | null; checkedAt: string | null; httpStatus?: number | null };
     printer: {
       host: string | null;
       port: number;
