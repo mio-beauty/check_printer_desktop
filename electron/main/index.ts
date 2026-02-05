@@ -109,6 +109,20 @@ function setPrinterReachability(next: { configured: boolean; ok: boolean; error:
       : `Printer reachability: fail (${next.error || "unknown"})`;
   log(next.ok ? "info" : "warn", msg);
   sendStatus();
+
+  // Report reachability to backend (LAN reachability is only known by this desktop client).
+  try {
+    if (socket?.connected && joined) {
+      socket.emit("printer_reachability", {
+        configured: printerReachability.configured,
+        ok: printerReachability.ok,
+        checked_at: printerReachability.checkedAt,
+        error: printerReachability.error,
+      });
+    }
+  } catch {
+    // ignore
+  }
 }
 
 async function probePrinterReachabilityOnce() {
@@ -608,6 +622,12 @@ function connectSocket() {
         port: s.printer.port,
         version: "check_printer_desktop",
       },
+      printer_reachability: {
+        configured: printerReachability.configured,
+        ok: printerReachability.ok,
+        checked_at: printerReachability.checkedAt,
+        error: printerReachability.error,
+      },
       warehouse: s.warehouse,
     });
     sendStatus();
@@ -627,6 +647,16 @@ function connectSocket() {
     joined = true;
     joinError = null;
     log("info", `join_ok: ${JSON.stringify(payload || {})}`);
+    try {
+      socket?.emit("printer_reachability", {
+        configured: printerReachability.configured,
+        ok: printerReachability.ok,
+        checked_at: printerReachability.checkedAt,
+        error: printerReachability.error,
+      });
+    } catch {
+      // ignore
+    }
     sendStatus();
   });
 
