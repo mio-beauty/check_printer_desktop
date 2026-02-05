@@ -1,4 +1,4 @@
-import { BrowserWindow, Menu, app, dialog, ipcMain } from "electron";
+import { BrowserWindow, Menu, app, dialog, ipcMain, shell } from "electron";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -108,6 +108,14 @@ function sendStatus() {
       downloading: updateDownloading,
       progress: updateProgress,
       error: updateError,
+      policy: updatePolicy
+        ? {
+            latestVersion: updatePolicy.latestVersion,
+            minSupportedVersion: updatePolicy.minSupportedVersion,
+            downloadUrl: updatePolicy.downloadUrl,
+            notes: updatePolicy.notes,
+          }
+        : null,
     },
     warehouseAuth: {
       phone: s.warehouseAuth?.phone || null,
@@ -510,11 +518,19 @@ async function createWindow() {
 
   if (!isDev()) {
     configureAutoUpdater();
+    // Policy can block the app if current version < minSupportedVersion.
+    await refreshUpdatePolicy();
     void checkForUpdates();
-    void refreshUpdatePolicy();
   }
 
-  connectSocket();
+  // If update is forced — do not connect to Socket.IO and do not perform any business actions.
+  // UI will show a blocking screen with the update CTA.
+  if (!updateAvailable?.forced) {
+    connectSocket();
+  } else {
+    joined = false;
+    joinError = "force_update_required";
+  }
   sendStatus();
   log("info", "Приложение запущено");
 }
@@ -604,12 +620,29 @@ ipcMain.handle("checkUpdates", async () => {
 
 ipcMain.handle("startUpdate", async () => {
   if (isDev()) return;
+  // Ensure we have the latest policy and/or updater metadata.
+  await refreshUpdatePolicy();
   if (!updateAvailable) return;
   updateError = null;
   updateDownloading = true;
   updateProgress = 0;
   sendStatus();
-  await autoUpdater.downloadUpdate();
+  try {
+    if (!autoUpdater || typeof autoUpdater.downloadUpdate !== "function") {
+      throw new Error("autoUpdater недоступен");
+    }
+    await autoUpdater.downloadUpdate();
+  } catch (e) {
+    updateDownloading = false;
+    updateError = String(e);
+    sendStatus();
+    const url = updatePolicy?.downloadUrl;
+    if (url) {
+      log("warn", `startUpdate fallback: open downloadUrl ${url}`);
+      await shell.openExternal(url).catch(() => null);
+    }
+    return;
+  }
   updateDownloading = false;
   sendStatus();
   const res = await (mainWindow

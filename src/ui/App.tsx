@@ -6,6 +6,7 @@ import { Minus, Square, X } from "lucide-react";
 import { WarehouseQueue } from "./WarehouseQueue";
 import { StatusView } from "./views/StatusView";
 import { LoginView } from "./views/LoginView";
+import { ForcedUpdateView } from "./views/ForcedUpdateView";
 
 type UpdateState =
   | { kind: "idle" }
@@ -29,6 +30,23 @@ type Settings = {
 
 type LogEntry = { ts: string; level: "info" | "warn" | "error"; message: string };
 
+type UpdatePolicy = {
+  latestVersion: string | null;
+  minSupportedVersion: string | null;
+  downloadUrl: string | null;
+  notes: string | null;
+};
+
+type StatusUpdate = {
+  available: boolean;
+  forced: boolean;
+  message: string;
+  downloading: boolean;
+  progress: number | null;
+  error: string | null;
+  policy?: UpdatePolicy | null;
+};
+
 declare global {
   interface Window {
     checkPrinter?: {
@@ -40,7 +58,7 @@ declare global {
         printer: { host: string | null; port: number; encoding: string; name: string };
         warehouse: { name: string; lat: number | null; lon: number | null };
         appVersion?: string;
-        update?: { available: boolean; forced: boolean; message: string; downloading: boolean; progress: number | null; error: string | null };
+        update?: StatusUpdate;
         warehouseAuth?: { phone: string | null; hasToken: boolean };
         window?: { maximized: boolean };
       }>;
@@ -55,7 +73,7 @@ declare global {
           printer: { host: string | null; port: number; encoding: string; name: string };
           warehouse: { name: string; lat: number | null; lon: number | null };
           appVersion?: string;
-          update?: { available: boolean; forced: boolean; message: string; downloading: boolean; progress: number | null; error: string | null };
+          update?: StatusUpdate;
           warehouseAuth?: { phone: string | null; hasToken: boolean };
           window?: { maximized: boolean };
         }) => void,
@@ -89,7 +107,7 @@ export default function App() {
     printer: { host: string | null; port: number; encoding: string; name: string };
     warehouse: { name: string; lat: number | null; lon: number | null };
     appVersion?: string;
-    update?: { available: boolean; forced: boolean; message: string; downloading: boolean; progress: number | null; error: string | null };
+    update?: StatusUpdate;
     warehouseAuth?: { phone: string | null; hasToken: boolean };
     window?: { maximized: boolean };
   } | null>(null);
@@ -107,6 +125,9 @@ export default function App() {
       : !status.joined
         ? `не выполнен join: ${status.joinError || "unknown"}`
         : null;
+  const currentVersion = String(status?.appVersion || "");
+  const minSupportedVersion = status?.update?.policy?.minSupportedVersion || null;
+  const policyNotes = status?.update?.policy?.notes || null;
 
   React.useEffect(() => {
     let off = () => {};
@@ -238,7 +259,7 @@ export default function App() {
       </div>
 
       <div className="flex">
-        {authed && (
+        {!forcedUpdate && authed && (
           <Sidebar>
             <div className="space-y-3">
               <SidebarSection>
@@ -288,7 +309,18 @@ export default function App() {
         )}
 
         <main className="min-w-0 flex-1">
-          {!authed ? (
+          {forcedUpdate ? (
+            <ForcedUpdateView
+              currentVersion={currentVersion || "—"}
+              minSupportedVersion={minSupportedVersion}
+              message={status?.update?.message || "Обновление обязательно."}
+              notes={policyNotes}
+              downloading={Boolean(status?.update?.downloading)}
+              progress={status?.update?.progress ?? null}
+              error={status?.update?.error ?? null}
+              onUpdate={startUpdate}
+            />
+          ) : !authed ? (
             <LoginView
               online={Boolean(status?.connected && status?.joined)}
               forcedUpdate={forcedUpdate}

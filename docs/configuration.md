@@ -44,7 +44,7 @@
 
 В проде эти значения задаются на backend (env):
 - `DESKTOP_LATEST_VERSION`
-- `DESKTOP_MIN_SUPPORTED_VERSION` (если версия клиента ниже — печать блокируется и требуется обновление)
+- `DESKTOP_MIN_SUPPORTED_VERSION` (если версия клиента ниже — **приложение блокируется** экраном-заглушкой и требуется обновление)
 - `DESKTOP_DOWNLOAD_URL`
 - `DESKTOP_RELEASE_NOTES`
 
