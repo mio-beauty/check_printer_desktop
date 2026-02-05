@@ -210,111 +210,119 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <div
-        className="sticky top-0 z-50 flex items-center justify-between border-b bg-background px-2"
-        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-      >
-        <div />
-        <div className="flex items-center gap-1" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
-          <Button variant="ghost" size="icon" onClick={windowMinimize} aria-label="Свернуть" className="rounded-none">
-            <Minus className=" w-3.5" strokeWidth={1.5} />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={windowToggleMaximize} aria-label="Развернуть" className="rounded-none">
-            <Square className=" w-3" strokeWidth={1.5} />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={windowClose} aria-label="Закрыть" className="rounded-none hover:bg-red-600/70 hover:text-white">
-            <X className=" w-3.5" strokeWidth={1.5} />
-          </Button>
+    <div className="h-screen bg-background text-foreground">
+      <div className="flex h-full flex-col">
+        <div
+          className="sticky top-0 z-50 flex items-center justify-between border-b bg-background px-2"
+          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+        >
+          <div />
+          <div className="flex items-center gap-1" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+            <Button variant="ghost" size="icon" onClick={windowMinimize} aria-label="Свернуть" className="rounded-none">
+              <Minus className=" w-3.5" strokeWidth={1.5} />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={windowToggleMaximize} aria-label="Развернуть" className="rounded-none">
+              <Square className=" w-3" strokeWidth={1.5} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={windowClose}
+              aria-label="Закрыть"
+              className="rounded-none hover:bg-red-600/70 hover:text-white"
+            >
+              <X className=" w-3.5" strokeWidth={1.5} />
+            </Button>
+          </div>
         </div>
-      </div>
 
-      <div className="flex">
-        {authed && (
-          <Sidebar>
-            <div className="space-y-3">
-              <SidebarSection>
-                <SidebarLabel>Навигация</SidebarLabel>
-                <Button
-                  className="w-full justify-start"
-                  variant={view === "status" ? "default" : "outline"}
-                  onClick={() => setView("status")}
-                >
-                  Статус
-                </Button>
-                <Button
-                  className="w-full justify-start"
-                  variant={view === "warehouse" ? "default" : "outline"}
-                  onClick={() => setView("warehouse")}
-                >
-                  Склад
-                </Button>
-              </SidebarSection>
+        <div className="flex flex-1 min-h-0 overflow-hidden">
+          {authed && (
+            <Sidebar className="overflow-y-auto">
+              <div className="space-y-3">
+                <SidebarSection>
+                  <SidebarLabel>Навигация</SidebarLabel>
+                  <Button
+                    className="w-full justify-start"
+                    variant={view === "status" ? "default" : "outline"}
+                    onClick={() => setView("status")}
+                  >
+                    Статус
+                  </Button>
+                  <Button
+                    className="w-full justify-start"
+                    variant={view === "warehouse" ? "default" : "outline"}
+                    onClick={() => setView("warehouse")}
+                  >
+                    Склад
+                  </Button>
+                </SidebarSection>
 
-              <SidebarSection>
-                <SidebarLabel>Связь</SidebarLabel>
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant={status?.connected ? "default" : "destructive"}>
-                    {status?.connected ? "socket: ok" : "socket: нет"}
-                  </Badge>
-                  <Badge variant={status?.joined ? "secondary" : "destructive"}>
-                    {status?.joined ? "join: ok" : `join: ${status?.joinError || "нет"}`}
-                  </Badge>
-                </div>
-                {forcedUpdate && <Badge variant="destructive">Требуется обновление</Badge>}
-              </SidebarSection>
+                <SidebarSection>
+                  <SidebarLabel>Связь</SidebarLabel>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant={status?.connected ? "default" : "destructive"}>
+                      {status?.connected ? "socket: ok" : "socket: нет"}
+                    </Badge>
+                    <Badge variant={status?.joined ? "secondary" : "destructive"}>
+                      {status?.joined ? "join: ok" : `join: ${status?.joinError || "нет"}`}
+                    </Badge>
+                  </div>
+                  {forcedUpdate && <Badge variant="destructive">Требуется обновление</Badge>}
+                </SidebarSection>
 
-              <SidebarSection>
-                <SidebarLabel>Аккаунт</SidebarLabel>
-                <Badge variant="secondary">{status?.warehouseAuth?.phone || "—"}</Badge>
-                <Button
-                  className="w-full justify-start"
-                  variant="outline"
-                  onClick={() => void window.checkPrinter?.warehouseLogout?.()}
-                >
-                  Выйти
-                </Button>
-              </SidebarSection>
-            </div>
-          </Sidebar>
-        )}
-
-        <main className="min-w-0 flex-1">
-          {!authed ? (
-            <LoginView
-              online={Boolean(status?.connected && status?.joined)}
-              forcedUpdate={forcedUpdate}
-              settings={settings}
-              setSettings={setSettings}
-            />
-          ) : (
-            <div className="mx-auto max-w-4xl space-y-4 p-6">
-              {view === "warehouse" ? (
-                <WarehouseQueue
-                  active
-                  online={Boolean(status?.connected && status?.joined)}
-                  forcedUpdate={forcedUpdate}
-                  auth={status?.warehouseAuth ?? null}
-                />
-              ) : (
-                <StatusView
-                  status={status}
-                  settings={settings}
-                  setSettings={setSettings}
-                  logs={logs}
-                  update={update}
-                  setUpdate={setUpdate}
-                  forcedUpdate={forcedUpdate}
-                  onTestPrint={testPrint}
-                  onCheckUpdates={checkUpdates}
-                  onStartUpdate={startUpdate}
-                  onSaveSettings={saveSettings}
-                />
-              )}
-            </div>
+                <SidebarSection>
+                  <SidebarLabel>Аккаунт</SidebarLabel>
+                  <Badge variant="secondary">{status?.warehouseAuth?.phone || "—"}</Badge>
+                  <Button
+                    className="w-full justify-start"
+                    variant="outline"
+                    onClick={() => void window.checkPrinter?.warehouseLogout?.()}
+                  >
+                    Выйти
+                  </Button>
+                </SidebarSection>
+              </div>
+            </Sidebar>
           )}
-        </main>
+
+          <main className="min-w-0 flex-1 overflow-auto">
+            {!authed ? (
+              <LoginView
+                online={Boolean(status?.connected && status?.joined)}
+                forcedUpdate={forcedUpdate}
+                settings={settings}
+                setSettings={setSettings}
+              />
+            ) : (
+              <div className="mx-auto max-w-4xl space-y-4 p-6">
+                {view === "warehouse" ? (
+                  <WarehouseQueue
+                    active
+                    online={Boolean(status?.connected && status?.joined)}
+                    forcedUpdate={forcedUpdate}
+                    auth={status?.warehouseAuth ?? null}
+                  />
+                ) : (
+                  <StatusView
+                    status={status}
+                    settings={settings}
+                    setSettings={setSettings}
+                    logs={logs}
+                    update={update}
+                    setUpdate={setUpdate}
+                    forcedUpdate={forcedUpdate}
+                    onTestPrint={testPrint}
+                    onCheckUpdates={checkUpdates}
+                    onStartUpdate={startUpdate}
+                    onSaveSettings={saveSettings}
+                  />
+                )}
+              </div>
+            )}
+          </main>
       </div>
     </div>
+  </div>
   );
 }
