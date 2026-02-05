@@ -212,19 +212,19 @@ export default function App() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div
-        className="sticky top-0 z-50 flex items-center justify-between border-b bg-background px-2 py-1.5"
+        className="sticky top-0 z-50 flex items-center justify-between border-b bg-background px-2"
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       >
         <div />
         <div className="flex items-center gap-1" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
-          <Button variant="ghost" size="icon" onClick={windowMinimize} aria-label="Свернуть">
-            <Minus className="h-3.5 w-3.5" strokeWidth={1.5} />
+          <Button variant="ghost" size="icon" onClick={windowMinimize} aria-label="Свернуть" className="rounded-none">
+            <Minus className=" w-3.5" strokeWidth={1.5} />
           </Button>
-          <Button variant="ghost" size="icon" onClick={windowToggleMaximize} aria-label="Развернуть">
-            <Square className="h-3.5 w-3.5" strokeWidth={1.5} />
+          <Button variant="ghost" size="icon" onClick={windowToggleMaximize} aria-label="Развернуть" className="rounded-none">
+            <Square className=" w-3" strokeWidth={1.5} />
           </Button>
-          <Button variant="ghost" size="icon" onClick={windowClose} aria-label="Закрыть">
-            <X className="h-3.5 w-3.5" strokeWidth={1.5} />
+          <Button variant="ghost" size="icon" onClick={windowClose} aria-label="Закрыть" className="rounded-none hover:bg-red-600/70 hover:text-white">
+            <X className=" w-3.5" strokeWidth={1.5} />
           </Button>
         </div>
       </div>
