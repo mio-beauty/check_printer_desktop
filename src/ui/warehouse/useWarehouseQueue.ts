@@ -43,6 +43,7 @@ export function useWarehouseQueue(opts: {
   const [scanCode, setScanCode] = React.useState("");
   const [scanBusy, setScanBusy] = React.useState(false);
   const [scanError, setScanError] = React.useState<string | null>(null);
+  const [pendingScan, setPendingScan] = React.useState<{ code: string; ts: string } | null>(null);
   const [lastScan, setLastScan] = React.useState<{ code: string; itemId: string; ts: string } | null>(null);
   const [highlightItemId, setHighlightItemId] = React.useState<string | null>(null);
 
@@ -186,6 +187,9 @@ export function useWarehouseQueue(opts: {
 
       setScanError(null);
       setScanBusy(true);
+      setPendingScan({ code: clean, ts: new Date().toISOString() });
+      // Clear input immediately: scanner workflows should be ready for the next scan.
+      setScanCode("");
       try {
         if (!window.checkPrinter?.warehousePickingScan) throw new Error("warehousePickingScan недоступен (нужна пересборка desktop/preload)");
         const res = await window.checkPrinter.warehousePickingScan(queueId, clean);
@@ -210,13 +214,13 @@ export function useWarehouseQueue(opts: {
           setHighlightItemId(itemId);
           setTimeout(() => setHighlightItemId((cur) => (cur === itemId ? null : cur)), 1500);
         }
-        setScanCode("");
         // Подтянуть истинное состояние (на случай конкуренции/пересканов) — но без блокировок UI.
         void openDetail(queueId);
       } catch (e) {
-        setScanError(String(e));
+        setScanError(`Код ${JSON.stringify(clean)}: ${String(e)}`);
       } finally {
         setScanBusy(false);
+        setPendingScan(null);
       }
     },
     [openDetail, opts.forcedUpdate, selectedId],
@@ -347,6 +351,7 @@ export function useWarehouseQueue(opts: {
     setScanCode,
     scanBusy,
     scanError,
+    pendingScan,
     lastScan,
     highlightItemId,
     pickingScan,

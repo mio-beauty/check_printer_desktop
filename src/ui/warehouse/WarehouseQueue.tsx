@@ -76,6 +76,8 @@ export function WarehouseQueue(props: {
   auth: WarehouseAuthStatus | null;
 }) {
   const s = useWarehouseQueue(props);
+  const scanInputRef = React.useRef<HTMLInputElement | null>(null);
+  const lastPointerDownAtRef = React.useRef<number>(0);
   const offline = !props.online;
   const actionsDisabled = offline || props.forcedUpdate || s.loading;
   const activePickingOrders = s.pickingTabs?.items || [];
@@ -88,6 +90,30 @@ export function WarehouseQueue(props: {
     { code: "SUBSTITUTED", label: "Замена" },
     { code: "OTHER", label: "Другое" },
   ];
+
+  const sessionActive = Boolean(s.selectedId !== null && s.detail?.picking?.is_active);
+  const canFocusScan =
+    sessionActive && !offline && !props.forcedUpdate && !s.scanBusy && !s.finishBusy && !s.finishConfirmOpen && !s.partialOpen;
+
+  const focusScanSoon = React.useCallback(() => {
+    if (!canFocusScan) return;
+    requestAnimationFrame(() => {
+      scanInputRef.current?.focus();
+    });
+  }, [canFocusScan]);
+
+  React.useEffect(() => {
+    // After errors, return focus back to scan input for keyboard-only workflow.
+    if (!canFocusScan) return;
+    if (s.scanError || s.finishError) focusScanSoon();
+  }, [canFocusScan, focusScanSoon, s.finishError, s.scanError]);
+
+  React.useEffect(() => {
+    // When dialogs close, return focus back to scan input.
+    if (!sessionActive) return;
+    if (s.finishConfirmOpen || s.partialOpen) return;
+    focusScanSoon();
+  }, [focusScanSoon, s.finishConfirmOpen, s.partialOpen, sessionActive]);
 
   if (!props.active) return null;
 
@@ -167,7 +193,6 @@ export function WarehouseQueue(props: {
   );
 
   if (s.selectedId !== null) {
-    const sessionActive = Boolean(s.detail?.picking?.is_active);
     const canStart = !offline && !props.forcedUpdate && !sessionActive;
 
     const pickingItems = s.detail?.picking?.items || [];
@@ -208,7 +233,12 @@ export function WarehouseQueue(props: {
     );
 
     return (
-      <div className="space-y-4">
+      <div
+        className="space-y-4"
+        onPointerDownCapture={() => {
+          lastPointerDownAtRef.current = Date.now();
+        }}
+      >
         {WarehouseChromeTabs}
         <div className="flex items-center justify-between gap-2">
           <Button variant="outline" onClick={() => s.setSelectedId(null)}>
@@ -258,17 +288,26 @@ export function WarehouseQueue(props: {
                       <div className="grid gap-2">
                         <Label>Скан-код</Label>
                         <Input
+                          ref={scanInputRef}
                           value={s.scanCode}
                           onChange={(e) => s.setScanCode(e.target.value)}
                           onKeyDown={(e) => {
-                            if (e.key === "Enter") void s.pickingScan(s.scanCode);
+                            if (e.key === "Enter" || e.key === "Tab") {
+                              e.preventDefault();
+                              void s.pickingScan(s.scanCode);
+                            }
                           }}
-                          placeholder="Отсканируй штрихкод/QR и нажми Enter"
+                          placeholder="Отсканируй штрихкод/QR и нажми Enter/Tab"
                           disabled={offline || props.forcedUpdate || s.scanBusy}
                           autoFocus
+                          onBlur={() => {
+                            // Keep focus for scanner workflows but don't steal it from mouse clicks.
+                            const sincePointerMs = Date.now() - lastPointerDownAtRef.current;
+                            if (sincePointerMs >= 350) focusScanSoon();
+                          }}
                         />
                         <div className="text-xs text-muted-foreground">
-                          Сканер обычно вводит код как клавиатура и завершает Enter.
+                          Сканер обычно вводит код как клавиатура и завершает Enter (иногда Tab).
                         </div>
                       </div>
                       <div className="flex flex-col justify-end gap-2">
@@ -296,6 +335,11 @@ export function WarehouseQueue(props: {
                           )}
                         </div>
                         {s.scanError && <Badge variant="destructive">{s.scanError}</Badge>}
+                        {s.pendingScan && (
+                          <Badge variant="secondary">
+                            Отправка: <span className="font-mono">{s.pendingScan.code}</span>
+                          </Badge>
+                        )}
                         {s.lastScan && (
                           <Badge variant="secondary">
                             Последний скан: <span className="font-mono">{s.lastScan.code}</span>
