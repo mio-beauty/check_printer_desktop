@@ -51,6 +51,14 @@ function log(level: LogEntry["level"], message: string) {
   mainWindow?.webContents.send("log", entry);
 }
 
+function sendWarehouseHint(reason: string) {
+  try {
+    mainWindow?.webContents.send("warehouse:hint", { reason, ts: new Date().toISOString() });
+  } catch {
+    // ignore
+  }
+}
+
 function ensureSettings(): Settings {
   if (!settings) settings = loadSettings();
   return settings;
@@ -358,6 +366,11 @@ function connectSocket() {
     joinError = String((payload || {}).reason || "unknown");
     log("error", `join_error: ${joinError}`);
     sendStatus();
+  });
+
+  // Для склада: когда приходит новый заказ — подсказать UI обновиться без polling.
+  socket.on("new_order", (_payload) => {
+    sendWarehouseHint("new_order");
   });
 
   socket.on("print_text", async (payload) => {

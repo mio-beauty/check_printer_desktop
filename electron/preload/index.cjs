@@ -14,6 +14,11 @@ contextBridge.exposeInMainWorld("checkPrinter", {
     ipcRenderer.on("log", listener);
     return () => ipcRenderer.removeListener("log", listener);
   },
+  onWarehouseHint: (cb) => {
+    const listener = (_event, payload) => cb(payload);
+    ipcRenderer.on("warehouse:hint", listener);
+    return () => ipcRenderer.removeListener("warehouse:hint", listener);
+  },
   getLogs: () => ipcRenderer.invoke("getLogs"),
   testPrint: (text) => ipcRenderer.invoke("testPrint", text),
   checkUpdates: () => ipcRenderer.invoke("checkUpdates"),
