@@ -41,4 +41,5 @@ Workflow: `.github/workflows/release.yml`
 
 - ✅ `electron-updater` подключён (GitHub Releases).
 - ✅ `GET /api/desktop/update-manifest` (политика force/optional) подключён через backend.
-- ✅ Обновление в фоне: скачивание без диалогов, установка через перезапуск (auto relaunch).
+- ✅ Optional update: пользователь нажимает “Обновить” → скачивание → перезапуск.
+- ✅ Force update: блокирующий экран → “Обновить” → скачивание → перезапуск.

@@ -272,8 +272,11 @@ function configureAutoUpdater() {
     sendStatus();
     return;
   }
-  // Background download; installation still requires restart.
-  autoUpdater.autoDownload = true;
+  // Best practice:
+  // - optional updates: download/install only by explicit user action
+  // - forced updates: show blocking UI and let user click "Обновить"
+  // Installation still requires restart.
+  autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on("update-available", (info: any) => {
@@ -284,18 +287,6 @@ function configureAutoUpdater() {
     updateError = null;
     log("info", `Update available: ${info.version}`);
     sendStatus();
-
-    // If policy says update is forced — start downloading immediately (no prompts).
-    if (policyUpdate?.forced) {
-      try {
-        updateDownloading = true;
-        updateProgress = 0;
-        sendStatus();
-        void autoUpdater.downloadUpdate();
-      } catch {
-        // handled by autoUpdater error events
-      }
-    }
   });
 
   autoUpdater.on("update-not-available", (info: any) => {
@@ -321,15 +312,6 @@ function configureAutoUpdater() {
     updateError = null;
     log("info", `Update downloaded: ${info.version}`);
     sendStatus();
-
-    // For forced updates: restart immediately and relaunch after install.
-    if (policyUpdate?.forced) {
-      try {
-        autoUpdater.quitAndInstall(true, true);
-      } catch {
-        // ignore
-      }
-    }
   });
 
   autoUpdater.on("error", (err: any) => {
@@ -663,6 +645,7 @@ ipcMain.handle("startUpdate", async () => {
   if (isDev()) return;
   // Ensure we have the latest policy and/or updater metadata.
   await refreshUpdatePolicy();
+  await checkForUpdates();
   if (!updateAvailable) return;
   updateError = null;
   updateDownloading = true;
