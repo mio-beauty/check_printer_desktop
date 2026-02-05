@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld("checkPrinter", {
   warehouseLogout: () => ipcRenderer.invoke("warehouse:logout"),
   warehouseOrders: (params) => ipcRenderer.invoke("warehouse:orders", params || {}),
   warehouseOrderDetail: (queueId) => ipcRenderer.invoke("warehouse:orderDetail", queueId),
+  warehouseOrderEvents: (queueId) => ipcRenderer.invoke("warehouse:orderEvents", queueId),
+  warehouseReasons: () => ipcRenderer.invoke("warehouse:reasons"),
   warehousePickingStart: (queueId) => ipcRenderer.invoke("warehouse:pickingStart", queueId),
   warehousePickingScan: (queueId, code) => ipcRenderer.invoke("warehouse:pickingScan", { queueId, code }),
   warehousePickingFinish: (queueId, reason_code, comment) =>

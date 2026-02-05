@@ -11,4 +11,5 @@
 - `docs/testing.md` — тестирование без реального принтера (fake printer)
 - `docs/releases.md` — сборка, релизы, автообновления (GitHub Releases → позже S3/CloudFront)
 - `docs/troubleshooting.md` — частые проблемы и решения
-
+- `docs/warehouse_queue.md` — очередь/сборка (склад) — QA сценарий
+- `docs/warehouse_problems.md` — проблемные заказы (partial/failed) — QA сценарий

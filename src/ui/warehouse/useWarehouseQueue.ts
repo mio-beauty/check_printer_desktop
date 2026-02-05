@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import type { OrderDetailResponse, OrdersResponse, WarehouseAuthStatus } from "./types";
+import type { OrderDetailResponse, OrderEventsResponse, OrdersResponse, WarehouseAuthStatus, WarehouseReason } from "./types";
 
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [v, setV] = React.useState(value);
@@ -19,6 +19,7 @@ export function useWarehouseQueue(opts: {
 }) {
   const hasToken = Boolean(opts.auth?.hasToken);
 
+  const [mode, setMode] = React.useState<"queue" | "problems">("queue");
   const [phone, setPhone] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [loginBusy, setLoginBusy] = React.useState(false);
@@ -40,12 +41,18 @@ export function useWarehouseQueue(opts: {
   const [detailBusy, setDetailBusy] = React.useState(false);
   const [detailError, setDetailError] = React.useState<string | null>(null);
   const [detail, setDetail] = React.useState<OrderDetailResponse | null>(null);
+  const [eventsBusy, setEventsBusy] = React.useState(false);
+  const [eventsError, setEventsError] = React.useState<string | null>(null);
+  const [events, setEvents] = React.useState<OrderEventsResponse | null>(null);
   const [scanCode, setScanCode] = React.useState("");
   const [scanBusy, setScanBusy] = React.useState(false);
   const [scanError, setScanError] = React.useState<string | null>(null);
   const [pendingScan, setPendingScan] = React.useState<{ code: string; ts: string } | null>(null);
   const [lastScan, setLastScan] = React.useState<{ code: string; itemId: string; ts: string } | null>(null);
   const [highlightItemId, setHighlightItemId] = React.useState<string | null>(null);
+
+  const [reasons, setReasons] = React.useState<WarehouseReason[]>([]);
+  const [reasonsError, setReasonsError] = React.useState<string | null>(null);
 
   const [pickingTabs, setPickingTabs] = React.useState<OrdersResponse | null>(null);
   const [pickingTabsRefreshing, setPickingTabsRefreshing] = React.useState(false);
@@ -64,22 +71,43 @@ export function useWarehouseQueue(opts: {
   }, [opts.active, opts.auth?.phone]);
 
   React.useEffect(() => {
+    if (!opts.active) return;
+    if (!hasToken) return;
+    if (!opts.online) return;
+    const api = window.checkPrinter;
+    const warehouseReasons = api?.warehouseReasons;
+    if (!warehouseReasons) return;
+
+    (async () => {
+      try {
+        setReasonsError(null);
+        const json = (await warehouseReasons()) as { reasons?: WarehouseReason[] };
+        const list = Array.isArray(json?.reasons) ? json.reasons : [];
+        setReasons(list.filter((r) => r && typeof r.code === "string" && typeof r.label === "string"));
+      } catch (e) {
+        setReasonsError(String(e));
+      }
+    })();
+  }, [hasToken, opts.active, opts.online]);
+
+  React.useEffect(() => {
     hasDataRef.current = data !== null;
   }, [data]);
 
   const refresh = React.useCallback(
-    async (mode: "initial" | "manual" | "background" = "manual") => {
+    async (refreshMode: "initial" | "manual" | "background" = "manual") => {
       if (!opts.active) return;
       if (!hasToken) return;
-      if (mode === "background") setRefreshing(true);
+      if (refreshMode === "background") setRefreshing(true);
       else setLoading(true);
-      if (mode !== "background") setError(null);
+      if (refreshMode !== "background") setError(null);
       try {
         const json = (await window.checkPrinter?.warehouseOrders?.({
           status: statusFilter || null,
           q: qDebounced || null,
           limit,
           offset,
+          problemsOnly: mode === "problems",
         })) as OrdersResponse;
         setData(json);
       } catch (e) {
@@ -89,7 +117,7 @@ export function useWarehouseQueue(opts: {
         setRefreshing(false);
       }
     },
-    [hasToken, limit, offset, opts.active, qDebounced, statusFilter],
+    [hasToken, limit, mode, offset, opts.active, qDebounced, statusFilter],
   );
 
   const refreshPickingTabs = React.useCallback(async () => {
@@ -121,6 +149,8 @@ export function useWarehouseQueue(opts: {
       setDetailError(null);
       setScanError(null);
       setFinishError(null);
+      setEvents(null);
+      setEventsError(null);
       if (!hasToken) return;
       setDetailBusy(true);
       try {
@@ -130,6 +160,18 @@ export function useWarehouseQueue(opts: {
         setDetailError(String(e));
       } finally {
         setDetailBusy(false);
+      }
+
+      // Events are read-only; fetch in background.
+      if (!window.checkPrinter?.warehouseOrderEvents) return;
+      setEventsBusy(true);
+      try {
+        const ev = (await window.checkPrinter.warehouseOrderEvents(id)) as OrderEventsResponse;
+        setEvents(ev);
+      } catch (e) {
+        setEventsError(String(e));
+      } finally {
+        setEventsBusy(false);
       }
     },
     [hasToken],
@@ -244,7 +286,7 @@ export function useWarehouseQueue(opts: {
   React.useEffect(() => {
     if (!opts.active) return;
     setOffset(0);
-  }, [opts.active, statusFilter, qDebounced]);
+  }, [opts.active, mode, statusFilter, qDebounced]);
 
   React.useEffect(() => {
     if (!opts.active) return;
@@ -316,6 +358,8 @@ export function useWarehouseQueue(opts: {
   };
 
   return {
+    mode,
+    setMode,
     hasToken,
     phone,
     setPhone,
@@ -345,6 +389,9 @@ export function useWarehouseQueue(opts: {
     detailBusy,
     detailError,
     detail,
+    eventsBusy,
+    eventsError,
+    events,
     openDetail,
     pickingStart,
     scanCode,
@@ -355,6 +402,8 @@ export function useWarehouseQueue(opts: {
     lastScan,
     highlightItemId,
     pickingScan,
+    reasons,
+    reasonsError,
     pickingTabs,
     pickingTabsRefreshing,
     refreshPickingTabs,

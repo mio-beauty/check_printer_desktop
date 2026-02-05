@@ -83,13 +83,15 @@ export function WarehouseQueue(props: {
   const activePickingOrders = s.pickingTabs?.items || [];
   const activePickingCount = activePickingOrders.length;
   const tabValue = s.selectedId === null ? "queue" : String(s.selectedId);
-  const PARTIAL_REASONS: Array<{ code: string; label: string }> = [
-    { code: "OUT_OF_STOCK", label: "Нет в наличии" },
-    { code: "DAMAGED", label: "Повреждено" },
-    { code: "NOT_FOUND", label: "Не найдено" },
-    { code: "SUBSTITUTED", label: "Замена" },
-    { code: "OTHER", label: "Другое" },
-  ];
+  const PARTIAL_REASONS: Array<{ code: string; label: string }> = s.reasons?.length
+    ? s.reasons
+    : [
+        { code: "OUT_OF_STOCK", label: "Нет в наличии" },
+        { code: "DAMAGED", label: "Повреждено" },
+        { code: "NOT_FOUND", label: "Не найдено" },
+        { code: "SUBSTITUTED", label: "Замена" },
+        { code: "OTHER", label: "Другое" },
+      ];
 
   const sessionActive = Boolean(s.selectedId !== null && s.detail?.picking?.is_active);
   const canFocusScan =
@@ -193,7 +195,8 @@ export function WarehouseQueue(props: {
   );
 
   if (s.selectedId !== null) {
-    const canStart = !offline && !props.forcedUpdate && !sessionActive;
+    const readOnly = s.mode === "problems";
+    const canStart = !readOnly && !offline && !props.forcedUpdate && !sessionActive;
 
     const pickingItems = s.detail?.picking?.items || [];
     const notScanned = pickingItems.filter((it) => (it.picked_qty ?? 0) < (it.ordered_qty ?? 0));
@@ -276,13 +279,13 @@ export function WarehouseQueue(props: {
                   )}
                 </div>
 
-                {!sessionActive && (
+                {!sessionActive && !readOnly && (
                   <Button onClick={() => void s.pickingStart(s.selectedId!)} disabled={!canStart}>
                     Начать сборку
                   </Button>
                 )}
 
-                {sessionActive && (
+                {sessionActive && !readOnly && (
                   <div className="space-y-2 rounded-md border p-3">
                     <div className="grid gap-2 sm:grid-cols-2">
                       <div className="grid gap-2">
@@ -351,6 +354,12 @@ export function WarehouseQueue(props: {
                   </div>
                 )}
 
+                {readOnly && (
+                  <div className="rounded-md border bg-muted p-3 text-sm text-muted-foreground">
+                    Режим “Проблемы”: просмотр только для чтения.
+                  </div>
+                )}
+
                 {s.detail.picking?.items?.length ? (
                   <div className="space-y-2">
                     <div className="text-sm text-muted-foreground">
@@ -380,6 +389,39 @@ export function WarehouseQueue(props: {
                 ) : (
                   <div className="text-sm text-muted-foreground">Позиции пока не созданы. Нажми “Начать сборку”.</div>
                 )}
+
+                <div className="space-y-2 rounded-md border p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-sm font-medium">Аудит</div>
+                    {s.eventsBusy && <Badge variant="secondary">Загрузка…</Badge>}
+                    {s.eventsError && <Badge variant="destructive">{s.eventsError}</Badge>}
+                    {s.detail.picking?.partial_reason_code ? (
+                      <Badge variant="secondary">
+                        Причина:{" "}
+                        {PARTIAL_REASONS.find((r) => r.code === String(s.detail?.picking?.partial_reason_code))?.label ||
+                          String(s.detail?.picking?.partial_reason_code)}
+                      </Badge>
+                    ) : null}
+                  </div>
+                  {s.detail.picking?.partial_reason_comment ? (
+                    <div className="text-xs text-muted-foreground">Комментарий: {String(s.detail.picking.partial_reason_comment)}</div>
+                  ) : null}
+
+                  {(s.events?.events || []).length ? (
+                    <div className="max-h-48 space-y-1 overflow-auto rounded-md bg-muted p-2 text-xs">
+                      {(s.events?.events || []).slice(-60).map((e) => (
+                        <div key={e.id} className="flex flex-wrap gap-x-2 gap-y-1">
+                          <span className="font-mono text-muted-foreground">{e.ts ? String(e.ts).slice(11, 19) : "—"}</span>
+                          <span className="font-mono">{e.type}</span>
+                          {e.code ? <span className="font-mono">{e.code}</span> : null}
+                          {e.message ? <span className="text-muted-foreground">{e.message}</span> : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-muted-foreground">Событий пока нет.</div>
+                  )}
+                </div>
               </>
             )}
           </CardContent>
@@ -422,6 +464,7 @@ export function WarehouseQueue(props: {
                   </option>
                 ))}
               </Select>
+              {s.reasonsError ? <div className="text-xs text-destructive">{String(s.reasonsError)}</div> : null}
             </div>
 
             <div className="mt-3 grid gap-2">
@@ -462,6 +505,26 @@ export function WarehouseQueue(props: {
           <Badge variant="secondary">{props.auth?.phone || "—"}</Badge>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant={s.mode === "queue" ? "default" : "outline"}
+            onClick={() => {
+              s.setMode("queue");
+              s.setStatusFilter("");
+            }}
+            disabled={s.loading}
+          >
+            Очередь
+          </Button>
+          <Button
+            variant={s.mode === "problems" ? "default" : "outline"}
+            onClick={() => {
+              s.setMode("problems");
+              s.setStatusFilter("");
+            }}
+            disabled={s.loading}
+          >
+            Проблемы
+          </Button>
           <Button variant="outline" onClick={() => void s.refresh("manual")} disabled={!s.hasToken || s.loading}>
             Обновить
           </Button>
@@ -473,43 +536,74 @@ export function WarehouseQueue(props: {
 
       <Card>
         <CardHeader>
-          <CardTitle>Очередь склада</CardTitle>
-          <CardDescription>Список заказов для сборки. Поиск и фильтры.</CardDescription>
+          <CardTitle>{s.mode === "problems" ? "Проблемы" : "Очередь склада"}</CardTitle>
+          <CardDescription>
+            {s.mode === "problems"
+              ? "PARTIALLY_PICKED и PICK_FAILED. Можно открыть заказ и посмотреть причину и аудит."
+              : "Список заказов для сборки. Поиск и фильтры."}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="sm:col-span-2">
-              <Input value={s.q} onChange={(e) => s.setQ(e.target.value)} placeholder="Поиск: номер / order_id / телефон" />
+              <Input
+                value={s.q}
+                onChange={(e) => s.setQ(e.target.value)}
+                placeholder={s.mode === "problems" ? "Поиск: номер / order_id / телефон / код" : "Поиск: номер / order_id / телефон"}
+              />
             </div>
             <div className="flex items-center justify-end gap-2">
               <Button variant={s.statusFilter === "" ? "default" : "outline"} onClick={() => s.setStatusFilter("")}>
                 Все
               </Button>
-              <Button
-                variant={s.statusFilter === "TO_PICK" ? "default" : "outline"}
-                onClick={() => s.setStatusFilter("TO_PICK")}
-              >
-                К сборке
-              </Button>
-              <Button
-                variant={s.statusFilter === "PICKING" ? "default" : "outline"}
-                onClick={() => s.setStatusFilter("PICKING")}
-              >
-                В сборке
-              </Button>
+              {s.mode === "problems" ? (
+                <>
+                  <Button
+                    variant={s.statusFilter === "PARTIALLY_PICKED" ? "default" : "outline"}
+                    onClick={() => s.setStatusFilter("PARTIALLY_PICKED")}
+                  >
+                    Частично
+                  </Button>
+                  <Button
+                    variant={s.statusFilter === "PICK_FAILED" ? "default" : "outline"}
+                    onClick={() => s.setStatusFilter("PICK_FAILED")}
+                  >
+                    Ошибка
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    variant={s.statusFilter === "TO_PICK" ? "default" : "outline"}
+                    onClick={() => s.setStatusFilter("TO_PICK")}
+                  >
+                    К сборке
+                  </Button>
+                  <Button
+                    variant={s.statusFilter === "PICKING" ? "default" : "outline"}
+                    onClick={() => s.setStatusFilter("PICKING")}
+                  >
+                    В сборке
+                  </Button>
+                </>
+              )}
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant={s.statusFilter === "PICKED" ? "default" : "outline"} onClick={() => s.setStatusFilter("PICKED")}>
-              Собран
-            </Button>
-            <Button
-              variant={s.statusFilter === "PARTIALLY_PICKED" ? "default" : "outline"}
-              onClick={() => s.setStatusFilter("PARTIALLY_PICKED")}
-            >
-              Частично
-            </Button>
+            {s.mode === "queue" ? (
+              <>
+                <Button variant={s.statusFilter === "PICKED" ? "default" : "outline"} onClick={() => s.setStatusFilter("PICKED")}>
+                  Собран
+                </Button>
+                <Button
+                  variant={s.statusFilter === "PARTIALLY_PICKED" ? "default" : "outline"}
+                  onClick={() => s.setStatusFilter("PARTIALLY_PICKED")}
+                >
+                  Частично
+                </Button>
+              </>
+            ) : null}
             <div className="ml-auto flex items-center gap-2">
               <Button
                 variant="outline"
@@ -539,6 +633,9 @@ export function WarehouseQueue(props: {
               const label = statusLabel(it.picking_status);
               const primaryCta = it.active_session_id || it.picking_status === "PICKING" ? "Продолжить" : "Начать";
               const ctaDisabled = actionsDisabled;
+              const reasonLabel = it.partial_reason_code
+                ? PARTIAL_REASONS.find((r) => r.code === it.partial_reason_code)?.label || it.partial_reason_code
+                : null;
 
               return (
                 <div key={it.id} className="flex flex-col gap-2 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between">
@@ -556,23 +653,29 @@ export function WarehouseQueue(props: {
                         {Math.round(it.progress?.picked ?? 0)}/{Math.round(it.progress?.ordered ?? 0)}
                       </Badge>
                       {it.printed ? <Badge variant="default">Печатался</Badge> : <Badge variant="secondary">Не печатался</Badge>}
+                      {s.mode === "problems" && reasonLabel ? <Badge variant="secondary">Причина: {reasonLabel}</Badge> : null}
                     </div>
                     <div className="mt-1 truncate text-xs text-muted-foreground">
                       {it.client_name ? it.client_name : "—"} • {it.client_phone ? it.client_phone : "—"} • позиций:{" "}
                       {it.items_count ?? "—"} • сумма: {formatSum(it.total)} сум
                     </div>
+                    {s.mode === "problems" && it.partial_reason_comment ? (
+                      <div className="mt-1 truncate text-xs text-muted-foreground">Комментарий: {String(it.partial_reason_comment)}</div>
+                    ) : null}
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
                     <Button variant="outline" onClick={() => void s.openDetail(it.id)} disabled={ctaDisabled}>
                       Открыть
                     </Button>
-                    <Button
-                      onClick={() => (primaryCta === "Начать" ? void s.pickingStart(it.id) : void s.openDetail(it.id))}
-                      disabled={ctaDisabled}
-                    >
-                      {primaryCta}
-                    </Button>
+                    {s.mode === "queue" ? (
+                      <Button
+                        onClick={() => (primaryCta === "Начать" ? void s.pickingStart(it.id) : void s.openDetail(it.id))}
+                        disabled={ctaDisabled}
+                      >
+                        {primaryCta}
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
               );

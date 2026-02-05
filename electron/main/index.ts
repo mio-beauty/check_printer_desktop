@@ -726,12 +726,16 @@ ipcMain.handle("warehouse:logout", async () => {
 
 ipcMain.handle(
   "warehouse:orders",
-  async (_evt, params: { status?: string | null; q?: string | null; limit?: number; offset?: number }) => {
+  async (
+    _evt,
+    params: { status?: string | null; q?: string | null; limit?: number; offset?: number; problemsOnly?: boolean },
+  ) => {
     const qs = new URLSearchParams();
     if (params?.status) qs.set("status", String(params.status));
     if (params?.q) qs.set("q", String(params.q));
     if (params?.limit) qs.set("limit", String(params.limit));
     if (params?.offset) qs.set("offset", String(params.offset));
+    if (params?.problemsOnly) qs.set("problems", "1");
     const url = `/api/warehouse/orders${qs.toString() ? `?${qs.toString()}` : ""}`;
 
     const res = await warehouseRequestJson(url, { method: "GET", timeoutMs: 12000 });
@@ -747,6 +751,24 @@ ipcMain.handle("warehouse:orderDetail", async (_evt, queueId: number) => {
   const res = await warehouseRequestJson(`/api/warehouse/orders/${Number(queueId)}`, { method: "GET", timeoutMs: 12000 });
   if (!res.ok) {
     const msg = res.json?.message || `warehouse/order failed (${res.status})`;
+    throw new Error(String(msg));
+  }
+  return res.json;
+});
+
+ipcMain.handle("warehouse:orderEvents", async (_evt, queueId: number) => {
+  const res = await warehouseRequestJson(`/api/warehouse/orders/${Number(queueId)}/events`, { method: "GET", timeoutMs: 12000 });
+  if (!res.ok) {
+    const msg = res.json?.message || `warehouse/events failed (${res.status})`;
+    throw new Error(String(msg));
+  }
+  return res.json;
+});
+
+ipcMain.handle("warehouse:reasons", async () => {
+  const res = await warehouseRequestJson(`/api/warehouse/reasons`, { method: "GET", timeoutMs: 12000 });
+  if (!res.ok) {
+    const msg = res.json?.message || `warehouse/reasons failed (${res.status})`;
     throw new Error(String(msg));
   }
   return res.json;

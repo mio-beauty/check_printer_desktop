@@ -86,8 +86,10 @@ declare global {
       startUpdate: () => Promise<void>;
       warehouseLogin?: (phone: string, password: string) => Promise<{ ok: boolean }>;
       warehouseLogout?: () => Promise<{ ok: boolean }>;
-      warehouseOrders?: (params: { status?: string | null; q?: string | null; limit?: number; offset?: number }) => Promise<any>;
+      warehouseOrders?: (params: { status?: string | null; q?: string | null; limit?: number; offset?: number; problemsOnly?: boolean }) => Promise<any>;
       warehouseOrderDetail?: (queueId: number) => Promise<any>;
+      warehouseOrderEvents?: (queueId: number) => Promise<any>;
+      warehouseReasons?: () => Promise<any>;
       warehousePickingStart?: (queueId: number) => Promise<any>;
       warehousePickingScan?: (queueId: number, code: string) => Promise<any>;
       warehousePickingFinish?: (queueId: number, reason_code?: string | null, comment?: string | null) => Promise<any>;
