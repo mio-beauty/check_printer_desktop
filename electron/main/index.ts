@@ -124,8 +124,51 @@ async function apiFetchJson(
   opts: { method?: string; headers?: Record<string, string>; json?: any; timeoutMs?: number } = {},
 ): Promise<{ ok: boolean; status: number; json: any }> {
   const s = ensureSettings();
-  const base = String(s.backendUrl || "").replace(/\/+$/, "");
-  const url = /^https?:\/\//i.test(pathOrUrl) ? pathOrUrl : `${base}${pathOrUrl.startsWith("/") ? "" : "/"}${pathOrUrl}`;
+  const base = String(s.backendUrl || "").trim().replace(/\/+$/, "");
+
+  function formatFetchError(e: unknown): string {
+    const err = e as any;
+    const msg = err?.name && err?.message ? `${err.name}: ${err.message}` : String(e);
+    const cause = err?.cause as any;
+    if (!cause) return msg;
+
+    const parts: string[] = [];
+    const causeMsg =
+      cause?.name && cause?.message ? `${cause.name}: ${cause.message}` : (typeof cause === "string" ? cause : String(cause));
+    if (causeMsg && causeMsg !== msg) parts.push(causeMsg);
+
+    const code = cause?.code || err?.code;
+    if (code) parts.push(`code=${String(code)}`);
+
+    const syscall = cause?.syscall;
+    if (syscall) parts.push(`syscall=${String(syscall)}`);
+
+    const hostname = cause?.hostname;
+    if (hostname) parts.push(`host=${String(hostname)}`);
+
+    const address = cause?.address;
+    if (address) parts.push(`addr=${String(address)}`);
+
+    const port = cause?.port;
+    if (port) parts.push(`port=${String(port)}`);
+
+    return parts.length ? `${msg} (cause: ${parts.join(" ")})` : msg;
+  }
+
+  let url: string;
+  if (/^https?:\/\//i.test(pathOrUrl)) {
+    url = pathOrUrl;
+  } else {
+    if (!base) return { ok: false, status: 0, json: { raw: "Backend URL пустой (настройки). Укажи https://... и попробуй снова." } };
+    if (!/^https?:\/\//i.test(base)) {
+      return {
+        ok: false,
+        status: 0,
+        json: { raw: `Backend URL должен начинаться с http(s):// (сейчас: ${JSON.stringify(base)})` },
+      };
+    }
+    url = `${base}${pathOrUrl.startsWith("/") ? "" : "/"}${pathOrUrl}`;
+  }
 
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), opts.timeoutMs ?? 8000);
@@ -155,8 +198,9 @@ async function apiFetchJson(
     }
     return { ok: res.ok, status: res.status, json: json ?? { raw } };
   } catch (e) {
-    log("error", `HTTP FAIL ${opts.method || "GET"} ${url}: ${String(e)}`);
-    return { ok: false, status: 0, json: { raw: String(e) } };
+    const details = formatFetchError(e);
+    log("error", `HTTP FAIL ${opts.method || "GET"} ${url}: ${details}`);
+    return { ok: false, status: 0, json: { raw: details } };
   } finally {
     clearTimeout(t);
   }

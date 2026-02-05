@@ -18,14 +18,39 @@ export function LoginView(props: {
   const [phone, setPhone] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  const [savingUrl, setSavingUrl] = React.useState(false);
+  const [info, setInfo] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
+  const saveBackendUrl = async () => {
+    setInfo(null);
+    setError(null);
+    setSavingUrl(true);
+    try {
+      const backendUrl = String(props.settings?.backendUrl ?? "").trim();
+      if (!backendUrl) throw new Error("Backend URL пустой");
+      if (!window.checkPrinter?.setSettings) throw new Error("setSettings недоступен (preload)");
+      await window.checkPrinter.setSettings({ backendUrl });
+      setInfo("Backend URL сохранён");
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSavingUrl(false);
+    }
+  };
+
   const onLogin = async () => {
+    setInfo(null);
     setError(null);
     setBusy(true);
     try {
       if (!window.checkPrinter?.warehouseLogin) {
         throw new Error("warehouseLogin недоступен (нужна пересборка desktop/preload)");
+      }
+      // Важно: login идёт из main-процесса и читает backendUrl из settings.json.
+      // Поэтому сохраняем введённый URL ДО попытки входа.
+      if (window.checkPrinter?.setSettings && props.settings?.backendUrl) {
+        await window.checkPrinter.setSettings({ backendUrl: String(props.settings.backendUrl).trim() });
       }
       await window.checkPrinter.warehouseLogin(phone.trim().replace(/\s+/g, ""), password);
       setPassword("");
@@ -55,7 +80,7 @@ export function LoginView(props: {
               placeholder="https://printer.backend.miobeauty.uz"
             />
             <div className="text-xs text-muted-foreground">
-              Нужен базовый URL backend (без лишних путей). После смены сохрани в настройках (кнопка появится после входа).
+              Нужен базовый URL backend (без лишних путей). Можно сохранить тут перед входом.
             </div>
           </div>
 
@@ -72,6 +97,14 @@ export function LoginView(props: {
             <Button onClick={onLogin} disabled={busy || !phone || !password || props.forcedUpdate}>
               Войти
             </Button>
+            <Button
+              variant="outline"
+              onClick={saveBackendUrl}
+              disabled={savingUrl || busy || !String(props.settings?.backendUrl ?? "").trim()}
+            >
+              Сохранить URL
+            </Button>
+            {info && <Badge variant="secondary">{info}</Badge>}
             {error && <Badge variant="destructive">{error}</Badge>}
           </div>
         </CardContent>
