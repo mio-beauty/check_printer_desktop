@@ -21,6 +21,11 @@ type Settings = {
   backendUrl: string;
   printerClientToken: string | null;
   clientId: string;
+  deviceAuth?: {
+    printerId: string | null;
+    accessToken: string | null;
+    refreshToken: string | null;
+  };
   warehouseAuth?: {
     phone: string | null;
     accessToken: string | null;
@@ -100,6 +105,7 @@ declare global {
       testPrint: (text?: string) => Promise<{ ok: boolean }>;
       checkUpdates: () => Promise<{ available: boolean; forced: boolean; message: string }>;
       startUpdate: () => Promise<void>;
+      deviceActivate?: (code: string) => Promise<{ ok: boolean; printer_id: string }>;
       warehouseLogin?: (phone: string, password: string) => Promise<{ ok: boolean }>;
       warehouseLogout?: () => Promise<{ ok: boolean }>;
       warehouseOrders?: (params: { status?: string | null; q?: string | null; limit?: number; offset?: number; problemsOnly?: boolean }) => Promise<any>;

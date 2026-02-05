@@ -17,6 +17,7 @@ type Settings = {
   backendUrl: string;
   printerClientToken: string | null;
   clientId: string;
+  deviceAuth?: { printerId: string | null; accessToken: string | null; refreshToken: string | null };
   printer: { host: string; port: number; encoding: string; name: string };
   warehouse: { name: string; lat: number | null; lon: number | null };
 };
@@ -52,6 +53,12 @@ export function StatusView(props: {
   onStartUpdate: () => Promise<void>;
   onSaveSettings: () => Promise<void>;
 }) {
+  const [activationCode, setActivationCode] = React.useState("");
+  const [activationBusy, setActivationBusy] = React.useState(false);
+  const [activationInfo, setActivationInfo] = React.useState<string | null>(null);
+  const [activationError, setActivationError] = React.useState<string | null>(null);
+  const deviceActivated = Boolean(props.settings?.deviceAuth?.refreshToken);
+
   const ensurePrinter = React.useCallback((p: Settings): Settings["printer"] => {
     return (
       p.printer ?? {
@@ -111,6 +118,62 @@ export function StatusView(props: {
             </span>
           </CardDescription>
         </CardHeader>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Активация устройства</CardTitle>
+          <CardDescription>Одноразовый код генерируется на сайте логистов (страница “Принтеры”).</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {deviceActivated ? (
+            <Badge variant="secondary">Устройство активировано</Badge>
+          ) : (
+            <>
+              <div className="grid gap-2">
+                <Label>Код активации</Label>
+                <Input
+                  value={activationCode}
+                  onChange={(e) => setActivationCode(e.target.value)}
+                  placeholder="ABCD2-EFGH3"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") (e.currentTarget.form?.requestSubmit?.() as any)();
+                  }}
+                />
+                <div className="text-xs text-muted-foreground">Можно ввести вручную или отсканировать (сканер как клавиатура).</div>
+              </div>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  (async () => {
+                    setActivationInfo(null);
+                    setActivationError(null);
+                    setActivationBusy(true);
+                    try {
+                      if (!window.checkPrinter?.deviceActivate) throw new Error("deviceActivate недоступен (нужна пересборка preload)");
+                      const res = await window.checkPrinter.deviceActivate(activationCode);
+                      setActivationInfo(`Активировано: printer_id=${res?.printer_id || "—"}`);
+                      setActivationCode("");
+                    } catch (err) {
+                      setActivationError(String(err));
+                    } finally {
+                      setActivationBusy(false);
+                    }
+                  })();
+                }}
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="submit" disabled={activationBusy || !activationCode.trim() || props.forcedUpdate}>
+                    {activationBusy ? "Активируем..." : "Активировать"}
+                  </Button>
+                  {activationInfo && <Badge variant="secondary">{activationInfo}</Badge>}
+                  {activationError && <Badge variant="destructive">{activationError}</Badge>}
+                </div>
+              </form>
+            </>
+          )}
+        </CardContent>
       </Card>
 
       <Card>

@@ -11,6 +11,11 @@
   "backendUrl": "https://printer.backend.miobeauty.uz",
   "printerClientToken": "CHANGE-ME-PRINTER-CLIENT-TOKEN",
   "clientId": "uuid",
+  "deviceAuth": {
+    "printerId": null,
+    "accessToken": null,
+    "refreshToken": null
+  },
   "printer": {
     "name": "Sklad Xprinter XP-80T",
     "host": "192.168.0.100",
@@ -36,6 +41,18 @@
 - `PRINTER_ENCODING` — кодировка текста для ESC/POS (`cp866` по умолчанию)
 - `PRINTER_NAME` — имя принтера (метаданные для backend/UI)
 - `WAREHOUSE_NAME` — имя склада (метаданные для backend/UI)
+
+## Активация устройства (device JWT + refresh)
+
+Режим “по бест практис”: desktop устройство активируется одноразовым кодом и получает `deviceAuth.refreshToken`.
+
+Поток:
+- На сайте логистов (страница “Принтеры”) админ генерирует одноразовый код (TTL 5–30 минут).
+- На ПК с desktop приложением этот код вводят/сканируют в “Статус → Активация устройства”.
+- Desktop вызывает `POST /api/device/activate`, получает `{access_token, refresh_token, printer_id}` и сохраняет в `settings.json.deviceAuth`.
+- Для `Socket.IO join` desktop отправляет `device_access_token` (короткий JWT). По мере истечения обновляет токен через `POST /api/device/auth/refresh`.
+
+Legacy: `PRINTER_CLIENT_TOKEN` остаётся как fallback, пока не отключён на backend.
 
 ## Обновления (политика force/optional)
 

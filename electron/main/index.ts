@@ -76,6 +76,12 @@ type WarehouseAuth = {
   refreshToken: string | null;
 };
 
+type DeviceAuth = {
+  printerId: string | null;
+  accessToken: string | null;
+  refreshToken: string | null;
+};
+
 function log(level: LogEntry["level"], message: string) {
   const entry: LogEntry = { ts: new Date().toISOString(), level, message };
   logs.push(entry);
@@ -213,6 +219,17 @@ function warehouseAuth(): WarehouseAuth {
   );
 }
 
+function deviceAuth(): DeviceAuth {
+  const s = ensureSettings();
+  return (
+    s.deviceAuth ?? {
+      printerId: null,
+      accessToken: null,
+      refreshToken: null,
+    }
+  );
+}
+
 function saveWarehouseAuth(next: Partial<WarehouseAuth>): WarehouseAuth {
   const cur = warehouseAuth();
   const merged: WarehouseAuth = {
@@ -221,6 +238,17 @@ function saveWarehouseAuth(next: Partial<WarehouseAuth>): WarehouseAuth {
     refreshToken: next.refreshToken !== undefined ? (next.refreshToken || null) : cur.refreshToken,
   };
   settings = saveSettings({ warehouseAuth: merged } as Partial<Settings>);
+  return merged;
+}
+
+function saveDeviceAuth(next: Partial<DeviceAuth>): DeviceAuth {
+  const cur = deviceAuth();
+  const merged: DeviceAuth = {
+    printerId: next.printerId !== undefined ? (next.printerId || null) : cur.printerId,
+    accessToken: next.accessToken !== undefined ? (next.accessToken || null) : cur.accessToken,
+    refreshToken: next.refreshToken !== undefined ? (next.refreshToken || null) : cur.refreshToken,
+  };
+  settings = saveSettings({ deviceAuth: merged } as Partial<Settings>);
   return merged;
 }
 
@@ -357,6 +385,49 @@ async function apiFetchJson(
   } finally {
     clearTimeout(t);
   }
+}
+
+function decodeJwtPayload(token: string): any | null {
+  try {
+    const parts = String(token || "").split(".");
+    if (parts.length < 2) return null;
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((base64Url.length + 3) % 4);
+    const json = Buffer.from(base64, "base64").toString("utf-8");
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+function jwtExpMs(token: string | null): number | null {
+  if (!token) return null;
+  const payload = decodeJwtPayload(token);
+  const expSec = payload?.exp;
+  if (!Number.isFinite(expSec)) return null;
+  return Number(expSec) * 1000;
+}
+
+async function ensureDeviceAccessToken(opts: { force?: boolean } = {}): Promise<string | null> {
+  const auth = deviceAuth();
+  const refresh = auth.refreshToken;
+  if (!refresh) return null;
+
+  const expMs = jwtExpMs(auth.accessToken);
+  const stillValid = expMs && expMs - Date.now() > 60_000;
+  if (!opts.force && auth.accessToken && stillValid) return auth.accessToken;
+
+  const res = await apiFetchJson("/api/device/auth/refresh", { method: "POST", json: { refresh_token: refresh }, timeoutMs: 8000 });
+  if (!res.ok) {
+    const msg = res.json?.message || res.json?.error || res.json?.raw || `device refresh failed (${res.status})`;
+    throw new Error(String(msg));
+  }
+  const access = res.json?.access_token ? String(res.json.access_token) : "";
+  const refresh2 = res.json?.refresh_token ? String(res.json.refresh_token) : "";
+  const printerId = res.json?.printer_id ? String(res.json.printer_id) : null;
+  if (!access || !refresh2) throw new Error("device refresh: tokens missing");
+  saveDeviceAuth({ accessToken: access, refreshToken: refresh2, printerId: printerId || auth.printerId || null });
+  return access;
 }
 
 async function warehouseRequestJson(
@@ -515,14 +586,21 @@ function connectSocket() {
     reconnectionDelayMax: 10_000,
   });
 
-  socket.on("connect", () => {
+  socket.on("connect", async () => {
     log("info", `Socket.IO подключён к ${url}`);
     joined = false;
     joinError = null;
     const s = ensureSettings();
+    let deviceAccess: string | null = null;
+    try {
+      deviceAccess = await ensureDeviceAccessToken();
+    } catch (e) {
+      log("warn", `Device auth refresh failed: ${String(e)}`);
+    }
     socket?.emit("join", {
       room: "local_printer",
       token: s.printerClientToken,
+      device_access_token: deviceAccess,
       client_id: s.clientId,
       printer: {
         name: s.printer.name,
@@ -669,6 +747,8 @@ async function createWindow() {
   }
 
   scheduleBackendProbe();
+  scheduleBackendProbe();
+  scheduleBackendProbe();
   schedulePrinterProbe();
   scheduleBackendProbe();
 
@@ -735,6 +815,46 @@ ipcMain.handle("setSettings", async (_evt, next: Partial<Settings>) => {
   sendStatus();
   log("info", "Настройки сохранены");
   return settings;
+});
+
+ipcMain.handle("device:activate", async (_evt, payload: { code: string }) => {
+  const code = String(payload?.code || "").trim().toUpperCase();
+  if (!code) throw new Error("code required");
+  if (updateAvailable?.forced) throw new Error("force_update_required");
+
+  const s = ensureSettings();
+  log("info", "Device activation start");
+  const res = await apiFetchJson("/api/device/activate", {
+    method: "POST",
+    json: {
+      code,
+      client_id: s.clientId,
+      printer: {
+        name: s.printer.name,
+        ip: s.printer.host,
+        port: s.printer.port,
+        version: "check_printer_desktop",
+      },
+    },
+    timeoutMs: 12000,
+  });
+  if (!res.ok) {
+    const msg = res.json?.message || res.json?.error || res.json?.raw || `activate failed (${res.status})`;
+    log("error", `Device activation failed: ${String(msg)}`);
+    throw new Error(String(msg));
+  }
+
+  const access = res.json?.access_token ? String(res.json.access_token) : "";
+  const refresh = res.json?.refresh_token ? String(res.json.refresh_token) : "";
+  const printerId = res.json?.printer_id ? String(res.json.printer_id) : "";
+  if (!access || !refresh || !printerId) throw new Error("activate: tokens missing");
+
+  saveDeviceAuth({ printerId, accessToken: access, refreshToken: refresh });
+  log("info", `Device activation OK printer_id=${printerId}`);
+
+  if (!updateAvailable?.forced) connectSocket();
+  sendStatus();
+  return { ok: true, printer_id: printerId };
 });
 
 ipcMain.handle("getLogs", async () => {
