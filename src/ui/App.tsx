@@ -99,6 +99,14 @@ export default function App() {
   const forcedUpdate = Boolean(status?.update?.forced || (update.kind === "available" && update.forced));
   const [view, setView] = React.useState<"status" | "warehouse">("status");
   const authed = Boolean(status?.warehouseAuth?.hasToken);
+  const online = Boolean(status?.connected && status?.joined);
+  const offlineReason = !status
+    ? "нет статуса"
+    : !status.connected
+      ? "нет соединения Socket.IO с backend"
+      : !status.joined
+        ? `не выполнен join: ${status.joinError || "unknown"}`
+        : null;
 
   React.useEffect(() => {
     let off = () => {};
@@ -292,7 +300,8 @@ export default function App() {
               {view === "warehouse" ? (
                 <WarehouseQueue
                   active
-                  online={Boolean(status?.connected && status?.joined)}
+                  online={online}
+                  offlineReason={offlineReason}
                   forcedUpdate={forcedUpdate}
                   auth={status?.warehouseAuth ?? null}
                 />

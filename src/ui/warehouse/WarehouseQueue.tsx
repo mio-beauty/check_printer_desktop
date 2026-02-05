@@ -68,7 +68,13 @@ function percent(picked: number, ordered: number): number {
   return Math.max(0, Math.min(100, (p / o) * 100));
 }
 
-export function WarehouseQueue(props: { active: boolean; online: boolean; forcedUpdate: boolean; auth: WarehouseAuthStatus | null }) {
+export function WarehouseQueue(props: {
+  active: boolean;
+  online: boolean;
+  offlineReason?: string | null;
+  forcedUpdate: boolean;
+  auth: WarehouseAuthStatus | null;
+}) {
   const s = useWarehouseQueue(props);
   const offline = !props.online;
   const actionsDisabled = offline || props.forcedUpdate || s.loading;
@@ -210,6 +216,9 @@ export function WarehouseQueue(props: { active: boolean; online: boolean; forced
           </Button>
           <div className="flex items-center gap-2">
             <Badge variant={offline ? "destructive" : "default"}>{offline ? "Оффлайн" : "Онлайн"}</Badge>
+            {offline && props.offlineReason ? (
+              <span className="text-xs text-muted-foreground">Причина: {props.offlineReason}</span>
+            ) : null}
             <Button variant="outline" onClick={s.onLogout}>
               Выйти
             </Button>
@@ -402,6 +411,9 @@ export function WarehouseQueue(props: { active: boolean; online: boolean; forced
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={offline ? "destructive" : "default"}>{offline ? "Оффлайн" : "Онлайн"}</Badge>
+          {offline && props.offlineReason ? (
+            <span className="text-xs text-muted-foreground">Причина: {props.offlineReason}</span>
+          ) : null}
           {props.forcedUpdate && <Badge variant="destructive">Требуется обновление — действия заблокированы</Badge>}
           <Badge variant="secondary">{props.auth?.phone || "—"}</Badge>
         </div>

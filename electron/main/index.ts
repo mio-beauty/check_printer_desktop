@@ -417,6 +417,12 @@ function connectSocket() {
     sendWarehouseHint("new_order");
   });
 
+  // Для склада: любые изменения сборки (start/scan/finish) — обновить список сразу.
+  socket.on("warehouse_update", (payload) => {
+    const kind = String(payload?.kind || "warehouse_update");
+    sendWarehouseHint(kind);
+  });
+
   socket.on("print_text", async (payload) => {
     const orderId = payload?.id;
     const number = payload?.number;
