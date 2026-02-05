@@ -60,6 +60,9 @@ export function WarehouseQueue(props: { active: boolean; online: boolean; forced
   const s = useWarehouseQueue(props);
   const offline = !props.online;
   const actionsDisabled = offline || props.forcedUpdate || s.loading;
+  const activePickingOrders = s.pickingTabs?.items || [];
+  const activePickingCount = activePickingOrders.length;
+  const tabValue = s.selectedId === null ? "queue" : String(s.selectedId);
 
   if (!props.active) return null;
 
@@ -90,6 +93,61 @@ export function WarehouseQueue(props: { active: boolean; online: boolean; forced
       </Card>
     );
   }
+
+  const renderPickingTab = (o: any) => {
+    const picked = Number(o.progress?.picked ?? 0);
+    const ordered = Number(o.progress?.ordered ?? 0);
+    const pct = percent(picked, ordered);
+    return (
+      <TabsTrigger key={o.id} value={String(o.id)} className="min-w-[220px]">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="truncate font-semibold">{o.number || `#${o.id}`}</span>
+            <Badge variant={statusBadgeVariant(o.picking_status)}>{statusLabel(o.picking_status)}</Badge>
+          </div>
+          <div className="mt-1 flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">
+              {Math.round(picked)}/{Math.round(ordered)}
+            </span>
+            <div className="min-w-[120px] flex-1">
+              <Progress value={pct} />
+            </div>
+            <span className="text-xs text-muted-foreground">{Math.round(pct)}%</span>
+          </div>
+        </div>
+      </TabsTrigger>
+    );
+  };
+
+  const WarehouseChromeTabs = (
+    <Card>
+      <CardContent className="pt-4">
+        <Tabs
+          value={tabValue}
+          onValueChange={(v) => {
+            if (v === "queue") {
+              s.setSelectedId(null);
+              return;
+            }
+            void s.openDetail(Number(v));
+          }}
+        >
+          <TabsList>
+            <TabsTrigger value="queue" className="min-w-[180px]">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="truncate font-semibold">Очередь</span>
+                  {activePickingCount > 0 ? <Badge variant="secondary">{activePickingCount}</Badge> : null}
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">Список заказов</div>
+              </div>
+            </TabsTrigger>
+            {activePickingOrders.map(renderPickingTab)}
+          </TabsList>
+        </Tabs>
+      </CardContent>
+    </Card>
+  );
 
   if (s.selectedId !== null) {
     const sessionActive = Boolean(s.detail?.picking?.is_active);
@@ -132,6 +190,7 @@ export function WarehouseQueue(props: { active: boolean; online: boolean; forced
 
     return (
       <div className="space-y-4">
+        {WarehouseChromeTabs}
         <div className="flex items-center justify-between gap-2">
           <Button variant="outline" onClick={() => s.setSelectedId(null)}>
             ← Назад к очереди
@@ -143,48 +202,6 @@ export function WarehouseQueue(props: { active: boolean; online: boolean; forced
             </Button>
           </div>
         </div>
-
-        {sessionActive && (s.pickingTabs?.items?.length ?? 0) > 0 && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Заказы в сборке</CardTitle>
-              <CardDescription>
-                Быстрое переключение между активными заказами.{" "}
-                {s.pickingTabsRefreshing ? "Обновление…" : null}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Tabs value={String(s.selectedId)} onValueChange={(v) => void s.openDetail(Number(v))}>
-                <TabsList>
-                  {(s.pickingTabs?.items || []).map((o) => {
-                    const picked = Number(o.progress?.picked ?? 0);
-                    const ordered = Number(o.progress?.ordered ?? 0);
-                    const pct = percent(picked, ordered);
-                    return (
-                      <TabsTrigger key={o.id} value={String(o.id)} className="min-w-[220px]">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="truncate font-semibold">{o.number || `#${o.id}`}</span>
-                            <Badge variant={statusBadgeVariant(o.picking_status)}>{statusLabel(o.picking_status)}</Badge>
-                          </div>
-                          <div className="mt-1 flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">
-                              {Math.round(picked)}/{Math.round(ordered)}
-                            </span>
-                            <div className="min-w-[120px] flex-1">
-                              <Progress value={pct} />
-                            </div>
-                            <span className="text-xs text-muted-foreground">{Math.round(pct)}%</span>
-                          </div>
-                        </div>
-                      </TabsTrigger>
-                    );
-                  })}
-                </TabsList>
-              </Tabs>
-            </CardContent>
-          </Card>
-        )}
 
         <Card>
           <CardHeader>
@@ -289,6 +306,7 @@ export function WarehouseQueue(props: { active: boolean; online: boolean; forced
 
   return (
     <div className="space-y-4">
+      {WarehouseChromeTabs}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={offline ? "destructive" : "default"}>{offline ? "Оффлайн" : "Онлайн"}</Badge>

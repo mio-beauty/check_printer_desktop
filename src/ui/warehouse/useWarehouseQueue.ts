@@ -87,7 +87,6 @@ export function useWarehouseQueue(opts: {
     if (!opts.active) return;
     if (!hasToken) return;
     if (!opts.online) return;
-    if (selectedId === null) return;
     if (!window.checkPrinter?.warehouseOrders) return;
 
     setPickingTabsRefreshing(true);
@@ -203,11 +202,9 @@ export function useWarehouseQueue(opts: {
     const off = window.checkPrinter?.onWarehouseHint?.((e) => {
       if (!e?.reason) return;
       if (!opts.online) return;
-      if (selectedId !== null) {
-        void refreshPickingTabs();
-        return;
-      }
-      void refresh("background");
+      // По сокет-событиям обновляем и список, и "табы" активных сборок.
+      void refreshPickingTabs();
+      if (selectedId === null) void refresh("background");
     });
     return () => {
       off?.();
@@ -223,9 +220,16 @@ export function useWarehouseQueue(opts: {
   }, [opts.active, hasToken, opts.online, refresh]);
 
   React.useEffect(() => {
-    if (selectedId === null) return;
     void refreshPickingTabs();
-  }, [refreshPickingTabs, selectedId]);
+  }, [refreshPickingTabs]);
+
+  React.useEffect(() => {
+    if (!opts.active) return;
+    if (!hasToken) return;
+    if (!opts.online) return;
+    const t = setInterval(() => void refreshPickingTabs(), 30_000);
+    return () => clearInterval(t);
+  }, [hasToken, opts.active, opts.online, refreshPickingTabs]);
 
   const onLogin = async () => {
     setLoginError(null);
