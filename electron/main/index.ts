@@ -30,6 +30,23 @@ let updatePolicy: {
   notes: string | null;
 } | null = null;
 let windowIsMaximized = false;
+let policyUpdate: { forced: boolean; message: string } | null = null;
+let updaterUpdate: { message: string } | null = null;
+
+function recomputeUpdateAvailable() {
+  const forced = Boolean(policyUpdate?.forced);
+  const any = Boolean(policyUpdate) || Boolean(updaterUpdate);
+  if (!any) {
+    updateAvailable = null;
+    return;
+  }
+
+  const message = forced
+    ? policyUpdate?.message || "Обновление обязательно."
+    : policyUpdate?.message || updaterUpdate?.message || "";
+
+  updateAvailable = { forced, message };
+}
 
 function isDev(): boolean {
   return !app.isPackaged;
@@ -259,7 +276,8 @@ function configureAutoUpdater() {
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on("update-available", (info: any) => {
-    updateAvailable = { forced: false, message: `Доступна новая версия: ${info.version}` };
+    updaterUpdate = { message: `Доступна новая версия: ${info.version}` };
+    recomputeUpdateAvailable();
     updateDownloading = false;
     updateProgress = null;
     updateError = null;
@@ -268,7 +286,9 @@ function configureAutoUpdater() {
   });
 
   autoUpdater.on("update-not-available", (info: any) => {
-    updateAvailable = null;
+    // Do NOT clear policy-based forced update here.
+    updaterUpdate = null;
+    recomputeUpdateAvailable();
     updateDownloading = false;
     updateProgress = null;
     updateError = null;
@@ -329,8 +349,8 @@ async function refreshUpdatePolicy() {
     const availableByPolicy = Boolean(current && latest && semver.lt(current, latest));
 
     if (!forced && !availableByPolicy) {
-      // keep message from updater (if any), but clear forced flag
-      if (updateAvailable) updateAvailable = { ...updateAvailable, forced: false };
+      policyUpdate = null;
+      recomputeUpdateAvailable();
       sendStatus();
       return;
     }
@@ -340,9 +360,8 @@ async function refreshUpdatePolicy() {
     const msgBase = forced ? `Обновление обязательно (требуется версия >= ${updatePolicy.minSupportedVersion}).` : `Доступна новая версия: ${verLabel}`;
     const msg = notes ? `${msgBase}\n${notes}` : msgBase;
 
-    updateAvailable = updateAvailable
-      ? { forced: updateAvailable.forced || forced, message: msg || updateAvailable.message }
-      : { forced, message: msg };
+    policyUpdate = { forced, message: msg };
+    recomputeUpdateAvailable();
 
     sendStatus();
   } catch (e) {
@@ -623,6 +642,13 @@ ipcMain.handle("startUpdate", async () => {
   // Ensure we have the latest policy and/or updater metadata.
   await refreshUpdatePolicy();
   if (!updateAvailable) return;
+  // If policy provides a direct download URL and update is forced, prefer opening it.
+  // This works even when autoUpdater feed doesn't have the required version yet.
+  if (updateAvailable.forced && updatePolicy?.downloadUrl) {
+    log("info", `Forced update: opening downloadUrl ${updatePolicy.downloadUrl}`);
+    await shell.openExternal(updatePolicy.downloadUrl).catch(() => null);
+    return;
+  }
   updateError = null;
   updateDownloading = true;
   updateProgress = 0;
