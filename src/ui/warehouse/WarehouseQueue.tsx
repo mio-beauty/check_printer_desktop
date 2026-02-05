@@ -4,6 +4,8 @@ import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { Progress } from "../../components/ui/progress";
+import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { useWarehouseQueue } from "./useWarehouseQueue";
 import { cn } from "../../lib/utils";
 
@@ -44,6 +46,14 @@ function statusBadgeVariant(s: string): "default" | "secondary" | "destructive" 
   if (up === "PICK_FAILED") return "destructive";
   if (up === "PICKING") return "secondary";
   return "secondary";
+}
+
+function percent(picked: number, ordered: number): number {
+  const o = Number(ordered);
+  const p = Number(picked);
+  if (!Number.isFinite(o) || o <= 0) return 0;
+  if (!Number.isFinite(p) || p <= 0) return 0;
+  return Math.max(0, Math.min(100, (p / o) * 100));
 }
 
 export function WarehouseQueue(props: { active: boolean; online: boolean; forcedUpdate: boolean; auth: WarehouseAuthStatus | null }) {
@@ -133,6 +143,48 @@ export function WarehouseQueue(props: { active: boolean; online: boolean; forced
             </Button>
           </div>
         </div>
+
+        {sessionActive && (s.pickingTabs?.items?.length ?? 0) > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Заказы в сборке</CardTitle>
+              <CardDescription>
+                Быстрое переключение между активными заказами.{" "}
+                {s.pickingTabsRefreshing ? "Обновление…" : null}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Tabs value={String(s.selectedId)} onValueChange={(v) => void s.openDetail(Number(v))}>
+                <TabsList>
+                  {(s.pickingTabs?.items || []).map((o) => {
+                    const picked = Number(o.progress?.picked ?? 0);
+                    const ordered = Number(o.progress?.ordered ?? 0);
+                    const pct = percent(picked, ordered);
+                    return (
+                      <TabsTrigger key={o.id} value={String(o.id)} className="min-w-[220px]">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate font-semibold">{o.number || `#${o.id}`}</span>
+                            <Badge variant={statusBadgeVariant(o.picking_status)}>{statusLabel(o.picking_status)}</Badge>
+                          </div>
+                          <div className="mt-1 flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">
+                              {Math.round(picked)}/{Math.round(ordered)}
+                            </span>
+                            <div className="min-w-[120px] flex-1">
+                              <Progress value={pct} />
+                            </div>
+                            <span className="text-xs text-muted-foreground">{Math.round(pct)}%</span>
+                          </div>
+                        </div>
+                      </TabsTrigger>
+                    );
+                  })}
+                </TabsList>
+              </Tabs>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>

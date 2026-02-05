@@ -46,6 +46,9 @@ export function useWarehouseQueue(opts: {
   const [lastScan, setLastScan] = React.useState<{ code: string; itemId: string; ts: string } | null>(null);
   const [highlightItemId, setHighlightItemId] = React.useState<string | null>(null);
 
+  const [pickingTabs, setPickingTabs] = React.useState<OrdersResponse | null>(null);
+  const [pickingTabsRefreshing, setPickingTabsRefreshing] = React.useState(false);
+
   React.useEffect(() => {
     if (!opts.active) return;
     setPhone(opts.auth?.phone || "");
@@ -80,11 +83,35 @@ export function useWarehouseQueue(opts: {
     [hasToken, limit, offset, opts.active, qDebounced, statusFilter],
   );
 
+  const refreshPickingTabs = React.useCallback(async () => {
+    if (!opts.active) return;
+    if (!hasToken) return;
+    if (!opts.online) return;
+    if (selectedId === null) return;
+    if (!window.checkPrinter?.warehouseOrders) return;
+
+    setPickingTabsRefreshing(true);
+    try {
+      const json = (await window.checkPrinter.warehouseOrders({
+        status: "PICKING",
+        q: null,
+        limit: 50,
+        offset: 0,
+      })) as OrdersResponse;
+      setPickingTabs(json);
+    } catch {
+      // ignore
+    } finally {
+      setPickingTabsRefreshing(false);
+    }
+  }, [hasToken, opts.active, opts.online, selectedId]);
+
   const openDetail = React.useCallback(
     async (id: number) => {
       setSelectedId(id);
       setDetail(null);
       setDetailError(null);
+      setScanError(null);
       if (!hasToken) return;
       setDetailBusy(true);
       try {
@@ -175,14 +202,17 @@ export function useWarehouseQueue(opts: {
     if (!hasToken) return;
     const off = window.checkPrinter?.onWarehouseHint?.((e) => {
       if (!e?.reason) return;
-      if (selectedId !== null) return;
       if (!opts.online) return;
+      if (selectedId !== null) {
+        void refreshPickingTabs();
+        return;
+      }
       void refresh("background");
     });
     return () => {
       off?.();
     };
-  }, [hasToken, opts.active, opts.online, refresh, selectedId]);
+  }, [hasToken, opts.active, opts.online, refresh, refreshPickingTabs, selectedId]);
 
   React.useEffect(() => {
     if (!opts.active) return;
@@ -191,6 +221,11 @@ export function useWarehouseQueue(opts: {
     const t = setInterval(() => void refresh("background"), 30_000);
     return () => clearInterval(t);
   }, [opts.active, hasToken, opts.online, refresh]);
+
+  React.useEffect(() => {
+    if (selectedId === null) return;
+    void refreshPickingTabs();
+  }, [refreshPickingTabs, selectedId]);
 
   const onLogin = async () => {
     setLoginError(null);
@@ -260,5 +295,8 @@ export function useWarehouseQueue(opts: {
     lastScan,
     highlightItemId,
     pickingScan,
+    pickingTabs,
+    pickingTabsRefreshing,
+    refreshPickingTabs,
   };
 }
