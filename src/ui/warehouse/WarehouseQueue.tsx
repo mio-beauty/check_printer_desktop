@@ -84,6 +84,42 @@ export function WarehouseQueue(props: { active: boolean; online: boolean; forced
   if (s.selectedId !== null) {
     const sessionActive = Boolean(s.detail?.picking?.is_active);
     const canStart = !offline && !props.forcedUpdate && !sessionActive;
+
+    const pickingItems = s.detail?.picking?.items || [];
+    const notScanned = pickingItems.filter((it) => (it.picked_qty ?? 0) < (it.ordered_qty ?? 0));
+    const scanned = pickingItems.filter((it) => (it.picked_qty ?? 0) >= (it.ordered_qty ?? 0));
+
+    const renderPickItem = (it: (typeof pickingItems)[number]) => (
+      <div
+        key={it.id}
+        className={cn(
+          "flex items-center justify-between rounded-md border px-3 py-2",
+          (it.picked_qty ?? 0) > 0 && (it.picked_qty ?? 0) < (it.ordered_qty ?? 0) && "border-amber-200 bg-amber-50",
+          (it.picked_qty ?? 0) >= (it.ordered_qty ?? 0) && "border-emerald-200 bg-emerald-50",
+          s.highlightItemId === it.id && "ring-2 ring-primary",
+        )}
+      >
+        <div className="min-w-0">
+          <div className="truncate font-medium">{it.name}</div>
+          <div className="truncate text-xs text-muted-foreground">
+            {it.sku ? `SKU: ${it.sku}` : "SKU: —"} • штрихкодов: {it.barcodes?.length ?? 0}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {(it.picked_qty ?? 0) >= (it.ordered_qty ?? 0) ? (
+            <Badge variant="default">Готово</Badge>
+          ) : (it.picked_qty ?? 0) > 0 ? (
+            <Badge variant="secondary">В процессе</Badge>
+          ) : (
+            <Badge variant="secondary">Не начато</Badge>
+          )}
+          <Badge variant="secondary">
+            {Math.round(it.picked_qty)}/{Math.round(it.ordered_qty)}
+          </Badge>
+        </div>
+      </div>
+    );
+
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-2">
@@ -168,37 +204,24 @@ export function WarehouseQueue(props: { active: boolean; online: boolean; forced
                       Позиции: {s.detail.picking.items.length} • Прогресс:{" "}
                       {Math.round(s.detail.picking.progress?.picked ?? 0)}/{Math.round(s.detail.picking.progress?.ordered ?? 0)}
                     </div>
-                    <div className="grid gap-2">
-                      {s.detail.picking.items.map((it) => (
-                        <div
-                          key={it.id}
-                          className={cn(
-                            "flex items-center justify-between rounded-md border px-3 py-2",
-                            (it.picked_qty ?? 0) > 0 && (it.picked_qty ?? 0) < (it.ordered_qty ?? 0) && "border-amber-200 bg-amber-50",
-                            (it.picked_qty ?? 0) >= (it.ordered_qty ?? 0) && "border-emerald-200 bg-emerald-50",
-                            s.highlightItemId === it.id && "ring-2 ring-primary",
-                          )}
-                        >
-                          <div className="min-w-0">
-                            <div className="truncate font-medium">{it.name}</div>
-                            <div className="truncate text-xs text-muted-foreground">
-                              {it.sku ? `SKU: ${it.sku}` : "SKU: —"} • штрихкодов: {it.barcodes?.length ?? 0}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {(it.picked_qty ?? 0) >= (it.ordered_qty ?? 0) ? (
-                              <Badge variant="default">Готово</Badge>
-                            ) : (it.picked_qty ?? 0) > 0 ? (
-                              <Badge variant="secondary">В процессе</Badge>
-                            ) : (
-                              <Badge variant="secondary">Не начато</Badge>
-                            )}
-                            <Badge variant="secondary">
-                              {Math.round(it.picked_qty)}/{Math.round(it.ordered_qty)}
-                            </Badge>
-                          </div>
-                        </div>
-                      ))}
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium">Не отсканировано</div>
+                        {notScanned.length ? (
+                          <div className="grid gap-2">{notScanned.map(renderPickItem)}</div>
+                        ) : (
+                          <div className="text-sm text-muted-foreground">Все позиции собраны.</div>
+                        )}
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium">Отсканировано</div>
+                        {scanned.length ? (
+                          <div className="grid gap-2">{scanned.map(renderPickItem)}</div>
+                        ) : (
+                          <div className="text-sm text-muted-foreground">Пока нет отсканированных позиций.</div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ) : (
