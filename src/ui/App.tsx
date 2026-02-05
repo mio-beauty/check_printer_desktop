@@ -7,6 +7,8 @@ import { WarehouseQueue } from "./WarehouseQueue";
 import { StatusView } from "./views/StatusView";
 import { LoginView } from "./views/LoginView";
 import { ForcedUpdateView } from "./views/ForcedUpdateView";
+import { StatusBar } from "./components/StatusBar";
+import { warehouseOfflineReason } from "./status/derive";
 
 type UpdateState =
   | { kind: "idle" }
@@ -55,7 +57,14 @@ declare global {
         joined: boolean;
         joinError: string | null;
         backendUrl: string;
-        printer: { host: string | null; port: number; encoding: string; name: string };
+        backend?: { httpOk: boolean; httpError: string | null; checkedAt: string | null };
+        printer: {
+          host: string | null;
+          port: number;
+          encoding: string;
+          name: string;
+          reachability?: { configured: boolean; ok: boolean; checkedAt: string | null; error: string | null };
+        };
         warehouse: { name: string; lat: number | null; lon: number | null };
         appVersion?: string;
         update?: StatusUpdate;
@@ -70,7 +79,14 @@ declare global {
           joined: boolean;
           joinError: string | null;
           backendUrl: string;
-          printer: { host: string | null; port: number; encoding: string; name: string };
+          backend?: { httpOk: boolean; httpError: string | null; checkedAt: string | null };
+          printer: {
+            host: string | null;
+            port: number;
+            encoding: string;
+            name: string;
+            reachability?: { configured: boolean; ok: boolean; checkedAt: string | null; error: string | null };
+          };
           warehouse: { name: string; lat: number | null; lon: number | null };
           appVersion?: string;
           update?: StatusUpdate;
@@ -106,7 +122,14 @@ export default function App() {
     joined: boolean;
     joinError: string | null;
     backendUrl: string;
-    printer: { host: string | null; port: number; encoding: string; name: string };
+    backend?: { httpOk: boolean; httpError: string | null; checkedAt: string | null };
+    printer: {
+      host: string | null;
+      port: number;
+      encoding: string;
+      name: string;
+      reachability?: { configured: boolean; ok: boolean; checkedAt: string | null; error: string | null };
+    };
     warehouse: { name: string; lat: number | null; lon: number | null };
     appVersion?: string;
     update?: StatusUpdate;
@@ -119,7 +142,7 @@ export default function App() {
   const forcedUpdate = Boolean(status?.update?.forced || (update.kind === "available" && update.forced));
   const [view, setView] = React.useState<"status" | "warehouse">("status");
   const authed = Boolean(status?.warehouseAuth?.hasToken);
-  const online = Boolean(status?.connected && status?.joined);
+  const warehouseOnline = Boolean(status?.backend?.httpOk);
   const offlineReason = !status
     ? "нет статуса"
     : !status.connected
@@ -127,6 +150,7 @@ export default function App() {
       : !status.joined
         ? `не выполнен join: ${status.joinError || "unknown"}`
         : null;
+  const warehouseOfflineReasonText = warehouseOfflineReason(status as any, forcedUpdate);
   const currentVersion = String(status?.appVersion || "");
   const minSupportedVersion = status?.update?.policy?.minSupportedVersion || null;
   const policyNotes = status?.update?.policy?.notes || null;
@@ -260,6 +284,8 @@ export default function App() {
         </div>
       </div>
 
+      <StatusBar status={status} forcedUpdate={forcedUpdate} onStartUpdate={() => void startUpdate()} />
+
       <div className="flex">
         {!forcedUpdate && authed && (
           <Sidebar>
@@ -324,7 +350,7 @@ export default function App() {
             />
           ) : !authed ? (
             <LoginView
-              online={Boolean(status?.connected && status?.joined)}
+              online={warehouseOnline}
               forcedUpdate={forcedUpdate}
               settings={settings}
               setSettings={setSettings}
@@ -334,8 +360,8 @@ export default function App() {
               {view === "warehouse" ? (
                 <WarehouseQueue
                   active
-                  online={online}
-                  offlineReason={offlineReason}
+                  online={warehouseOnline}
+                  offlineReason={warehouseOfflineReasonText ?? offlineReason}
                   forcedUpdate={forcedUpdate}
                   auth={status?.warehouseAuth ?? null}
                 />

@@ -29,7 +29,13 @@ export function StatusView(props: {
     joined: boolean;
     joinError: string | null;
     backendUrl: string;
-    printer: { host: string | null; port: number; encoding: string; name: string };
+    printer: {
+      host: string | null;
+      port: number;
+      encoding: string;
+      name: string;
+      reachability?: { configured: boolean; ok: boolean; checkedAt: string | null; error: string | null };
+    };
     warehouse: { name: string; lat: number | null; lon: number | null };
     appVersion?: string;
     update?: { available: boolean; forced: boolean; message: string; downloading: boolean; progress: number | null; error: string | null };
@@ -86,7 +92,11 @@ export function StatusView(props: {
           <Badge variant={props.status?.joined ? "secondary" : "destructive"}>
             {props.status?.joined ? "join: ok" : `join: ${props.status?.joinError || "нет"}`}
           </Badge>
-          <Button variant="outline" onClick={props.onTestPrint} disabled={props.forcedUpdate}>
+          <Button
+            variant="outline"
+            onClick={props.onTestPrint}
+            disabled={props.forcedUpdate || Boolean(props.status?.printer?.reachability?.configured && !props.status?.printer?.reachability?.ok)}
+          >
             Тестовая печать
           </Button>
           <Button variant="secondary" onClick={props.onCheckUpdates}>

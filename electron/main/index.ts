@@ -1,5 +1,6 @@
 import { BrowserWindow, Menu, app, ipcMain } from "electron";
 import { createRequire } from "node:module";
+import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { io, Socket } from "socket.io-client";
@@ -29,6 +30,14 @@ let updatePolicy: {
   downloadUrl: string | null;
   notes: string | null;
 } | null = null;
+let backendHttp: { ok: boolean; checkedAt: string | null; error: string | null } = { ok: false, checkedAt: null, error: null };
+let printerReachability: { configured: boolean; ok: boolean; checkedAt: string | null; error: string | null } = {
+  configured: false,
+  ok: false,
+  checkedAt: null,
+  error: null,
+};
+let printerProbeTimer: NodeJS.Timeout | null = null;
 let windowIsMaximized = false;
 let policyUpdate: { forced: boolean; message: string } | null = null;
 let updaterUpdate: { message: string } | null = null;
@@ -66,6 +75,82 @@ function log(level: LogEntry["level"], message: string) {
   logs.push(entry);
   if (logs.length > 300) logs.splice(0, logs.length - 300);
   mainWindow?.webContents.send("log", entry);
+}
+
+function setBackendHttpState(next: { ok: boolean; error: string | null; checkedAt: string }) {
+  const changed = backendHttp.ok !== next.ok || backendHttp.error !== next.error;
+  backendHttp = { ok: next.ok, error: next.error, checkedAt: next.checkedAt };
+  if (!changed) return;
+  log(next.ok ? "info" : "warn", next.ok ? "Backend HTTP: ok" : `Backend HTTP: fail (${next.error || "unknown"})`);
+  sendStatus();
+}
+
+function setPrinterReachability(next: { configured: boolean; ok: boolean; error: string | null; checkedAt: string }) {
+  const changed =
+    printerReachability.configured !== next.configured || printerReachability.ok !== next.ok || printerReachability.error !== next.error;
+  printerReachability = { configured: next.configured, ok: next.ok, error: next.error, checkedAt: next.checkedAt };
+  if (!changed) return;
+  const msg = !next.configured
+    ? "Printer reachability: not configured"
+    : next.ok
+      ? "Printer reachability: ok"
+      : `Printer reachability: fail (${next.error || "unknown"})`;
+  log(next.ok ? "info" : "warn", msg);
+  sendStatus();
+}
+
+async function probePrinterReachabilityOnce() {
+  const s = ensureSettings();
+  const host = String(s.printer.host || "").trim();
+  const port = Number(s.printer.port || 0);
+  const checkedAt = new Date().toISOString();
+
+  if (!host) {
+    setPrinterReachability({ configured: false, ok: false, error: "printer_not_configured", checkedAt });
+    return;
+  }
+  if (!Number.isFinite(port) || port <= 0) {
+    setPrinterReachability({ configured: true, ok: false, error: "invalid_port", checkedAt });
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    const socket = new net.Socket();
+    let done = false;
+
+    const finish = (ok: boolean, error: string | null) => {
+      if (done) return;
+      done = true;
+      try {
+        socket.destroy();
+      } catch {
+        // ignore
+      }
+      setPrinterReachability({ configured: true, ok, error, checkedAt });
+      resolve();
+    };
+
+    socket.setTimeout(900);
+    socket.once("connect", () => finish(true, null));
+    socket.once("timeout", () => finish(false, "timeout"));
+    socket.once("error", (e: any) => {
+      const code = e?.code ? String(e.code) : "";
+      const msg = e?.message ? String(e.message) : String(e);
+      finish(false, code ? `${code}${msg && !msg.includes(code) ? `: ${msg}` : ""}` : msg);
+    });
+
+    try {
+      socket.connect(port, host);
+    } catch (e) {
+      finish(false, String(e));
+    }
+  });
+}
+
+function schedulePrinterProbe() {
+  if (printerProbeTimer) clearInterval(printerProbeTimer);
+  void probePrinterReachabilityOnce();
+  printerProbeTimer = setInterval(() => void probePrinterReachabilityOnce(), 7000);
 }
 
 function sendWarehouseHint(reason: string) {
@@ -110,11 +195,17 @@ function sendStatus() {
     joined,
     joinError,
     backendUrl: s.backendUrl,
+    backend: {
+      httpOk: backendHttp.ok,
+      httpError: backendHttp.error,
+      checkedAt: backendHttp.checkedAt,
+    },
     printer: {
       host: s.printer.host || null,
       port: s.printer.port,
       encoding: s.printer.encoding,
       name: s.printer.name,
+      reachability: printerReachability,
     },
     warehouse: s.warehouse,
     appVersion: app.getVersion(),
@@ -208,6 +299,7 @@ async function apiFetchJson(
       body: opts.json ? JSON.stringify(opts.json) : undefined,
       signal: controller.signal,
     });
+    setBackendHttpState({ ok: true, error: null, checkedAt: new Date().toISOString() });
     const raw = await res.text().catch(() => "");
     let json: any = null;
     if (raw) {
@@ -225,6 +317,7 @@ async function apiFetchJson(
   } catch (e) {
     const details = formatFetchError(e);
     log("error", `HTTP FAIL ${opts.method || "GET"} ${url}: ${details}`);
+    setBackendHttpState({ ok: false, error: details, checkedAt: new Date().toISOString() });
     return { ok: false, status: 0, json: { raw: details } };
   } finally {
     clearTimeout(t);
@@ -324,20 +417,10 @@ function configureAutoUpdater() {
 }
 
 async function refreshUpdatePolicy() {
-  const s = ensureSettings();
-  const base = String(s.backendUrl || "").replace(/\/+$/, "");
-  if (!base) return;
-
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), 5000);
+  const res = await apiFetchJson("/api/desktop/update-manifest", { timeoutMs: 5000 });
+  if (!res.ok) return;
   try {
-    const res = await fetch(`${base}/api/desktop/update-manifest`, {
-      method: "GET",
-      headers: { "accept": "application/json" },
-      signal: controller.signal,
-    });
-    if (!res.ok) return;
-    const json = await res.json().catch(() => null);
+    const json = res.json;
     updatePolicy = {
       latestVersion: (json?.latest_version || null) && String(json.latest_version),
       minSupportedVersion: (json?.min_supported_version || null) && String(json.min_supported_version),
@@ -369,9 +452,7 @@ async function refreshUpdatePolicy() {
 
     sendStatus();
   } catch (e) {
-    log("warn", `update-manifest недоступен: ${String(e)}`);
-  } finally {
-    clearTimeout(t);
+    log("warn", `update-manifest parse failed: ${String(e)}`);
   }
 }
 
@@ -471,6 +552,12 @@ function connectSocket() {
       if (!host) throw new Error("Не настроен принтер (host пустой)");
 
       log("info", `Печать заказа id=${orderId} number=${number} job=${printJobId} attempt=${payload?.attempt}`);
+      const checkedAtMs = printerReachability.checkedAt ? Date.parse(printerReachability.checkedAt) : 0;
+      const fresh = checkedAtMs && Date.now() - checkedAtMs < 12_000;
+      if (fresh && printerReachability.configured && !printerReachability.ok) {
+        throw new Error(`printer_unreachable: ${printerReachability.error || "unknown"}`);
+      }
+
       const job = buildEscPosJob(text, { encoding: s.printer.encoding });
       await sendToTcpPrinter(job, { host, port, timeoutMs: 5000 });
 
@@ -546,6 +633,8 @@ async function createWindow() {
     void checkForUpdates();
   }
 
+  schedulePrinterProbe();
+
   // If update is forced — do not connect to Socket.IO and do not perform any business actions.
   // UI will show a blocking screen with the update CTA.
   if (!updateAvailable?.forced) {
@@ -571,7 +660,12 @@ ipcMain.handle("getStatus", async () => {
     joined,
     joinError,
     backendUrl: s.backendUrl,
-    printer: { ...s.printer, host: s.printer.host || null },
+    backend: {
+      httpOk: backendHttp.ok,
+      httpError: backendHttp.error,
+      checkedAt: backendHttp.checkedAt,
+    },
+    printer: { ...s.printer, host: s.printer.host || null, reachability: printerReachability },
     warehouse: s.warehouse,
     appVersion: app.getVersion(),
     update: {
@@ -598,7 +692,8 @@ ipcMain.handle("getSettings", async () => {
 
 ipcMain.handle("setSettings", async (_evt, next: Partial<Settings>) => {
   settings = saveSettings(next);
-  connectSocket();
+  schedulePrinterProbe();
+  if (!updateAvailable?.forced) connectSocket();
   sendStatus();
   log("info", "Настройки сохранены");
   return settings;
@@ -624,6 +719,12 @@ ipcMain.handle("testPrint", async (_evt, text: string | undefined) => {
       "!NORMAL",
       "Спасибо!",
     ].join("\n");
+  const checkedAtMs = printerReachability.checkedAt ? Date.parse(printerReachability.checkedAt) : 0;
+  const fresh = checkedAtMs && Date.now() - checkedAtMs < 12_000;
+  if (fresh && printerReachability.configured && !printerReachability.ok) {
+    throw new Error(`printer_unreachable: ${printerReachability.error || "unknown"}`);
+  }
+
   const job = buildEscPosJob(sample, { encoding: s.printer.encoding });
   await sendToTcpPrinter(job, { host, port, timeoutMs: 5000 });
   log("info", "Тестовая печать отправлена");
@@ -643,6 +744,7 @@ ipcMain.handle("checkUpdates", async () => {
 
 ipcMain.handle("startUpdate", async () => {
   if (isDev()) return;
+  log("info", "Update requested by user");
   // Ensure we have the latest policy and/or updater metadata.
   await refreshUpdatePolicy();
   await checkForUpdates();
@@ -775,11 +877,14 @@ ipcMain.handle("warehouse:reasons", async () => {
 });
 
 ipcMain.handle("warehouse:pickingStart", async (_evt, queueId: number) => {
+  log("info", `Picking start queueId=${Number(queueId)}`);
   const res = await warehouseRequestJson(`/api/warehouse/orders/${Number(queueId)}/picking/start`, { method: "POST", timeoutMs: 12000 });
   if (!res.ok) {
     const msg = res.json?.message || `picking/start failed (${res.status})`;
+    log("error", `Picking start failed queueId=${Number(queueId)}: ${String(msg)}`);
     throw new Error(String(msg));
   }
+  log("info", `Picking start OK queueId=${Number(queueId)}`);
   return res.json;
 });
 
@@ -788,6 +893,7 @@ ipcMain.handle("warehouse:pickingScan", async (_evt, payload: { queueId: number;
   const code = String(payload?.code || "").trim();
   if (!queueId || !code) throw new Error("queueId and code required");
 
+  log("info", `Picking scan queueId=${queueId} code=${JSON.stringify(code)}`);
   const res = await warehouseRequestJson(`/api/warehouse/orders/${queueId}/picking/scan`, {
     method: "POST",
     json: { code },
@@ -795,8 +901,10 @@ ipcMain.handle("warehouse:pickingScan", async (_evt, payload: { queueId: number;
   });
   if (!res.ok) {
     const msg = res.json?.message || `picking/scan failed (${res.status})`;
+    log("error", `Picking scan failed queueId=${queueId}: ${String(msg)}`);
     throw new Error(String(msg));
   }
+  log("info", `Picking scan OK queueId=${queueId}`);
   return res.json;
 });
 
@@ -808,6 +916,12 @@ ipcMain.handle(
     const reason_code = payload?.reason_code ? String(payload.reason_code).trim() : "";
     const comment = payload?.comment ? String(payload.comment).trim() : "";
 
+    log(
+      "info",
+      `Picking finish queueId=${queueId} reason_code=${reason_code ? JSON.stringify(reason_code) : "null"} comment=${
+        comment ? JSON.stringify(comment) : "null"
+      }`,
+    );
     const body: any = {};
     if (reason_code) body.reason_code = reason_code;
     if (comment) body.comment = comment;
@@ -819,8 +933,10 @@ ipcMain.handle(
     });
     if (!res.ok) {
       const msg = res.json?.message || `picking/finish failed (${res.status})`;
+      log("error", `Picking finish failed queueId=${queueId}: ${String(msg)}`);
       throw new Error(String(msg));
     }
+    log("info", `Picking finish OK queueId=${queueId}`);
     return res.json;
   },
 );
