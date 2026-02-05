@@ -193,15 +193,6 @@ export function StatusView(props: {
             </div>
 
             <div className="grid gap-2">
-              <Label>Token (printer client)</Label>
-              <Input
-                value={props.settings?.printerClientToken ?? ""}
-                onChange={(e) => props.setSettings((p) => (p ? { ...p, printerClientToken: e.target.value } : null))}
-                placeholder="PRINTER_CLIENT_TOKEN"
-              />
-            </div>
-
-            <div className="grid gap-2">
               <Label>Имя принтера</Label>
               <Input
                 value={props.settings?.printer?.name ?? ""}
