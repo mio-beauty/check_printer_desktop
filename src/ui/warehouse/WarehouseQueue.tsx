@@ -8,6 +8,18 @@ import { Progress } from "../../components/ui/progress";
 import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { useWarehouseQueue } from "./useWarehouseQueue";
 import { cn } from "../../lib/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../../components/ui/alert-dialog";
+import { Select } from "../../components/ui/select";
+import { Textarea } from "../../components/ui/textarea";
 
 import type { WarehouseAuthStatus } from "./types";
 
@@ -63,6 +75,13 @@ export function WarehouseQueue(props: { active: boolean; online: boolean; forced
   const activePickingOrders = s.pickingTabs?.items || [];
   const activePickingCount = activePickingOrders.length;
   const tabValue = s.selectedId === null ? "queue" : String(s.selectedId);
+  const PARTIAL_REASONS: Array<{ code: string; label: string }> = [
+    { code: "OUT_OF_STOCK", label: "Нет в наличии" },
+    { code: "DAMAGED", label: "Повреждено" },
+    { code: "NOT_FOUND", label: "Не найдено" },
+    { code: "SUBSTITUTED", label: "Замена" },
+    { code: "OTHER", label: "Другое" },
+  ];
 
   if (!props.active) return null;
 
@@ -121,7 +140,7 @@ export function WarehouseQueue(props: { active: boolean; online: boolean; forced
 
   const WarehouseChromeTabs = (
     <Card>
-      <CardContent className="pt-4">
+      <CardContent className="p-0 border-none shadow-none">
         <Tabs
           value={tabValue}
           onValueChange={(v) => {
@@ -132,16 +151,8 @@ export function WarehouseQueue(props: { active: boolean; online: boolean; forced
             void s.openDetail(Number(v));
           }}
         >
-          <TabsList>
-            <TabsTrigger value="queue" className="min-w-[180px]">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="truncate font-semibold">Очередь</span>
-                  {activePickingCount > 0 ? <Badge variant="secondary">{activePickingCount}</Badge> : null}
-                </div>
-                <div className="mt-1 text-xs text-muted-foreground">Список заказов</div>
-              </div>
-            </TabsTrigger>
+          <TabsList className="rounded-b-none border-b-0">
+
             {activePickingOrders.map(renderPickingTab)}
           </TabsList>
         </Tabs>
@@ -156,6 +167,8 @@ export function WarehouseQueue(props: { active: boolean; online: boolean; forced
     const pickingItems = s.detail?.picking?.items || [];
     const notScanned = pickingItems.filter((it) => (it.picked_qty ?? 0) < (it.ordered_qty ?? 0));
     const scanned = pickingItems.filter((it) => (it.picked_qty ?? 0) >= (it.ordered_qty ?? 0));
+
+    const complete = pickingItems.length > 0 && notScanned.length === 0;
 
     const renderPickItem = (it: (typeof pickingItems)[number]) => (
       <div
@@ -256,12 +269,30 @@ export function WarehouseQueue(props: { active: boolean; online: boolean; forced
                         >
                           Применить
                         </Button>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            variant="secondary"
+                            onClick={() => s.setPartialOpen(true)}
+                            disabled={offline || props.forcedUpdate || s.scanBusy || s.finishBusy}
+                          >
+                            Завершить частично
+                          </Button>
+                          {complete && (
+                            <Button
+                              onClick={() => s.setFinishConfirmOpen(true)}
+                              disabled={offline || props.forcedUpdate || s.scanBusy || s.finishBusy}
+                            >
+                              Завершить
+                            </Button>
+                          )}
+                        </div>
                         {s.scanError && <Badge variant="destructive">{s.scanError}</Badge>}
                         {s.lastScan && (
                           <Badge variant="secondary">
                             Последний скан: <span className="font-mono">{s.lastScan.code}</span>
                           </Badge>
                         )}
+                        {s.finishError && <Badge variant="destructive">{s.finishError}</Badge>}
                       </div>
                     </div>
                   </div>
@@ -300,6 +331,67 @@ export function WarehouseQueue(props: { active: boolean; online: boolean; forced
             )}
           </CardContent>
         </Card>
+
+        <AlertDialog open={s.finishConfirmOpen} onOpenChange={s.setFinishConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Завершить сборку?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Все товары отсканированы. Завершить сборку и отметить заказ как “Собран”?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={s.finishBusy}>Отмена</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={offline || props.forcedUpdate || s.finishBusy}
+                onClick={() => void s.pickingFinish()}
+              >
+                Завершить
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={s.partialOpen} onOpenChange={s.setPartialOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Завершить частично</AlertDialogTitle>
+              <AlertDialogDescription>Выбери причину, почему заказ собран не полностью.</AlertDialogDescription>
+            </AlertDialogHeader>
+
+            <div className="mt-3 grid gap-2">
+              <Label>Причина</Label>
+              <Select value={s.partialReason} onChange={(e) => s.setPartialReason(e.target.value)} disabled={s.finishBusy}>
+                <option value="">Выбери причину…</option>
+                {PARTIAL_REASONS.map((r) => (
+                  <option key={r.code} value={r.code}>
+                    {r.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            <div className="mt-3 grid gap-2">
+              <Label>Комментарий (опционально)</Label>
+              <Textarea
+                value={s.partialComment}
+                onChange={(e) => s.setPartialComment(e.target.value)}
+                placeholder="Например: нет на полке, будет позже…"
+                disabled={s.finishBusy}
+              />
+            </div>
+
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={s.finishBusy}>Отмена</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={offline || props.forcedUpdate || s.finishBusy || !s.partialReason}
+                onClick={() => void s.pickingFinish({ reason_code: s.partialReason, comment: s.partialComment })}
+              >
+                Завершить частично
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     );
   }

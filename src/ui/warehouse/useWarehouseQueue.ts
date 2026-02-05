@@ -49,6 +49,14 @@ export function useWarehouseQueue(opts: {
   const [pickingTabs, setPickingTabs] = React.useState<OrdersResponse | null>(null);
   const [pickingTabsRefreshing, setPickingTabsRefreshing] = React.useState(false);
 
+  const [finishConfirmOpen, setFinishConfirmOpen] = React.useState(false);
+  const finishConfirmShownRef = React.useRef<string | null>(null);
+  const [finishBusy, setFinishBusy] = React.useState(false);
+  const [finishError, setFinishError] = React.useState<string | null>(null);
+  const [partialOpen, setPartialOpen] = React.useState(false);
+  const [partialReason, setPartialReason] = React.useState<string>("");
+  const [partialComment, setPartialComment] = React.useState<string>("");
+
   React.useEffect(() => {
     if (!opts.active) return;
     setPhone(opts.auth?.phone || "");
@@ -111,6 +119,7 @@ export function useWarehouseQueue(opts: {
       setDetail(null);
       setDetailError(null);
       setScanError(null);
+      setFinishError(null);
       if (!hasToken) return;
       setDetailBusy(true);
       try {
@@ -129,6 +138,7 @@ export function useWarehouseQueue(opts: {
     async (id: number) => {
       if (opts.forcedUpdate) return;
       setDetailError(null);
+      setFinishError(null);
       try {
         await window.checkPrinter?.warehousePickingStart?.(id);
         await openDetail(id);
@@ -138,6 +148,32 @@ export function useWarehouseQueue(opts: {
       }
     },
     [openDetail, opts.forcedUpdate, refresh],
+  );
+
+  const pickingFinish = React.useCallback(
+    async (payload: { reason_code?: string | null; comment?: string | null } = {}) => {
+      const queueId = selectedId;
+      if (!queueId) return;
+      if (opts.forcedUpdate) return;
+      setFinishError(null);
+      setFinishBusy(true);
+      try {
+        if (!window.checkPrinter?.warehousePickingFinish) {
+          throw new Error("warehousePickingFinish недоступен (нужна пересборка desktop/preload)");
+        }
+        await window.checkPrinter.warehousePickingFinish(queueId, payload.reason_code ?? null, payload.comment ?? null);
+        await refresh("background");
+        await refreshPickingTabs();
+        // После завершения возвращаемся в очередь.
+        setSelectedId(null);
+        setDetail(null);
+      } catch (e) {
+        setFinishError(String(e));
+      } finally {
+        setFinishBusy(false);
+      }
+    },
+    [opts.forcedUpdate, refresh, refreshPickingTabs, selectedId],
   );
 
   const pickingScan = React.useCallback(
@@ -185,6 +221,21 @@ export function useWarehouseQueue(opts: {
     },
     [openDetail, opts.forcedUpdate, selectedId],
   );
+
+  React.useEffect(() => {
+    // Авто-завершение (с подтверждением): когда всё собрано, показываем confirm один раз на сессию.
+    if (!detail?.picking?.is_active) return;
+    const sessionId = String(detail.picking.id || "");
+    const items = detail.picking.items || [];
+    if (!sessionId || items.length === 0) return;
+
+    const complete = items.every((it) => (it.picked_qty ?? 0) >= (it.ordered_qty ?? 0));
+    if (!complete) return;
+
+    if (finishConfirmShownRef.current === sessionId) return;
+    finishConfirmShownRef.current = sessionId;
+    setFinishConfirmOpen(true);
+  }, [detail?.picking?.id, detail?.picking?.is_active, detail?.picking?.items]);
 
   React.useEffect(() => {
     if (!opts.active) return;
@@ -302,5 +353,16 @@ export function useWarehouseQueue(opts: {
     pickingTabs,
     pickingTabsRefreshing,
     refreshPickingTabs,
+    finishConfirmOpen,
+    setFinishConfirmOpen,
+    finishBusy,
+    finishError,
+    pickingFinish,
+    partialOpen,
+    setPartialOpen,
+    partialReason,
+    setPartialReason,
+    partialComment,
+    setPartialComment,
   };
 }

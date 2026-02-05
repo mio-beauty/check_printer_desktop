@@ -684,3 +684,28 @@ ipcMain.handle("warehouse:pickingScan", async (_evt, payload: { queueId: number;
   }
   return res.json;
 });
+
+ipcMain.handle(
+  "warehouse:pickingFinish",
+  async (_evt, payload: { queueId: number; reason_code?: string | null; comment?: string | null }) => {
+    const queueId = Number(payload?.queueId);
+    if (!queueId) throw new Error("queueId required");
+    const reason_code = payload?.reason_code ? String(payload.reason_code).trim() : "";
+    const comment = payload?.comment ? String(payload.comment).trim() : "";
+
+    const body: any = {};
+    if (reason_code) body.reason_code = reason_code;
+    if (comment) body.comment = comment;
+
+    const res = await warehouseRequestJson(`/api/warehouse/orders/${queueId}/picking/finish`, {
+      method: "POST",
+      json: Object.keys(body).length ? body : undefined,
+      timeoutMs: 12000,
+    });
+    if (!res.ok) {
+      const msg = res.json?.message || `picking/finish failed (${res.status})`;
+      throw new Error(String(msg));
+    }
+    return res.json;
+  },
+);

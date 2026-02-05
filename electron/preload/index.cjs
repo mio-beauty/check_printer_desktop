@@ -32,4 +32,6 @@ contextBridge.exposeInMainWorld("checkPrinter", {
   warehouseOrderDetail: (queueId) => ipcRenderer.invoke("warehouse:orderDetail", queueId),
   warehousePickingStart: (queueId) => ipcRenderer.invoke("warehouse:pickingStart", queueId),
   warehousePickingScan: (queueId, code) => ipcRenderer.invoke("warehouse:pickingScan", { queueId, code }),
+  warehousePickingFinish: (queueId, reason_code, comment) =>
+    ipcRenderer.invoke("warehouse:pickingFinish", { queueId, reason_code, comment }),
 });

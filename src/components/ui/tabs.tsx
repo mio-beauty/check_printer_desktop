@@ -37,7 +37,7 @@ export function TabsList(props: React.HTMLAttributes<HTMLDivElement>) {
     <div
       {...props}
       className={cn(
-        "inline-flex w-full items-center gap-2 overflow-auto rounded-md border bg-background p-2",
+        "inline-flex w-full items-center gap-2 overflow-auto rounded-md bg-background p-0",
         props.className,
       )}
     />

@@ -71,6 +71,7 @@ declare global {
       warehouseOrderDetail?: (queueId: number) => Promise<any>;
       warehousePickingStart?: (queueId: number) => Promise<any>;
       warehousePickingScan?: (queueId: number, code: string) => Promise<any>;
+      warehousePickingFinish?: (queueId: number, reason_code?: string | null, comment?: string | null) => Promise<any>;
       windowMinimize?: () => Promise<void>;
       windowToggleMaximize?: () => Promise<void>;
       windowClose?: () => Promise<void>;
