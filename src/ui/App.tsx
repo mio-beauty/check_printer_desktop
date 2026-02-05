@@ -233,14 +233,7 @@ export default function App() {
         className="sticky top-0 z-50 flex items-center justify-between border-b bg-background px-2 py-1.5"
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       >
-        <div className="flex items-center gap-1" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
-          <Button variant={view === "status" ? "default" : "ghost"} size="sm" onClick={() => setView("status")}>
-            Статус
-          </Button>
-          <Button variant={view === "warehouse" ? "default" : "ghost"} size="sm" onClick={() => setView("warehouse")}>
-            Склад
-          </Button>
-        </div>
+        <div />
         <div className="flex items-center gap-1" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
           <Button variant="ghost" size="icon" onClick={windowMinimize} aria-label="Свернуть">
             <Minus className="h-3.5 w-3.5" strokeWidth={1.5} />
@@ -254,16 +247,53 @@ export default function App() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-4xl space-y-4 p-6">
-        {view === "warehouse" ? (
-          <WarehouseQueue
-            active
-            online={Boolean(status?.connected && status?.joined)}
-            forcedUpdate={forcedUpdate}
-            auth={status?.warehouseAuth ?? null}
-          />
-        ) : (
-          <>
+      <div className="flex">
+        <aside className="w-56 shrink-0 border-r bg-background p-3">
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <div className="text-xs text-muted-foreground">Навигация</div>
+              <Button
+                className="w-full justify-start"
+                variant={view === "status" ? "default" : "outline"}
+                onClick={() => setView("status")}
+              >
+                Статус
+              </Button>
+              <Button
+                className="w-full justify-start"
+                variant={view === "warehouse" ? "default" : "outline"}
+                onClick={() => setView("warehouse")}
+              >
+                Склад
+              </Button>
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-xs text-muted-foreground">Связь</div>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant={status?.connected ? "default" : "destructive"}>
+                  {status?.connected ? "socket: ok" : "socket: нет"}
+                </Badge>
+                <Badge variant={status?.joined ? "secondary" : "destructive"}>
+                  {status?.joined ? "join: ok" : `join: ${status?.joinError || "нет"}`}
+                </Badge>
+              </div>
+              {forcedUpdate && <Badge variant="destructive">Требуется обновление</Badge>}
+            </div>
+          </div>
+        </aside>
+
+        <main className="min-w-0 flex-1">
+          <div className="mx-auto max-w-4xl space-y-4 p-6">
+            {view === "warehouse" ? (
+              <WarehouseQueue
+                active
+                online={Boolean(status?.connected && status?.joined)}
+                forcedUpdate={forcedUpdate}
+                auth={status?.warehouseAuth ?? null}
+              />
+            ) : (
+              <>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-semibold">Статус</h1>
@@ -491,7 +521,9 @@ export default function App() {
           </CardContent>
         </Card>
           </>
-        )}
+            )}
+          </div>
+        </main>
       </div>
     </div>
   );

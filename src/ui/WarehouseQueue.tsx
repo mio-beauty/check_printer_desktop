@@ -197,7 +197,7 @@ export function WarehouseQueue(props: {
     setLoginError(null);
     setLoginBusy(true);
     try {
-      await window.checkPrinter?.warehouseLogin?.(phone, password);
+      await window.checkPrinter?.warehouseLogin?.(phone.trim().replace(/\\s+/g, ""), password);
       setPassword("");
       await refresh();
     } catch (e) {
@@ -457,4 +457,3 @@ export function WarehouseQueue(props: {
     </div>
   );
 }
-

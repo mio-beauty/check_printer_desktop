@@ -132,8 +132,20 @@ async function apiFetchJson(
       body: opts.json ? JSON.stringify(opts.json) : undefined,
       signal: controller.signal,
     });
-    const json = await res.json().catch(() => null);
-    return { ok: res.ok, status: res.status, json };
+    const raw = await res.text().catch(() => "");
+    let json: any = null;
+    if (raw) {
+      try {
+        json = JSON.parse(raw);
+      } catch {
+        json = null;
+      }
+    }
+    if (!res.ok) {
+      const brief = raw ? raw.slice(0, 240) : "";
+      log("warn", `HTTP ${res.status} ${opts.method || "GET"} ${url} ${brief ? `body=${JSON.stringify(brief)}` : ""}`.trim());
+    }
+    return { ok: res.ok, status: res.status, json: json ?? { raw } };
   } finally {
     clearTimeout(t);
   }
@@ -571,7 +583,7 @@ ipcMain.handle("window:close", async () => {
 });
 
 ipcMain.handle("warehouse:login", async (_evt, payload: { phone: string; password: string }) => {
-  const phone = String(payload?.phone || "").trim();
+  const phone = String(payload?.phone || "").trim().replace(/\s+/g, "");
   const password = String(payload?.password || "");
   if (!phone || !password) throw new Error("phone and password required");
 
@@ -581,7 +593,7 @@ ipcMain.handle("warehouse:login", async (_evt, payload: { phone: string; passwor
     timeoutMs: 12000,
   });
   if (!res.ok) {
-    const msg = res.json?.message || res.json?.error || `login failed (${res.status})`;
+    const msg = res.json?.message || res.json?.error || res.json?.raw || `login failed (${res.status})`;
     throw new Error(String(msg));
   }
   const access = res.json?.access_token ? String(res.json.access_token) : "";
