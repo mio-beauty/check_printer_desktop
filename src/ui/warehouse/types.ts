@@ -53,6 +53,7 @@ export type OrderDetailResponse = {
       name: string;
       sku: string | null;
       ms_assortment_id: string | null;
+      main_image_mini_url?: string | null;
       barcodes: string[];
       ordered_qty: number;
       picked_qty: number;

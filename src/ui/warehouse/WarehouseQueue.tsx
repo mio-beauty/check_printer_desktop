@@ -20,6 +20,8 @@ import {
 } from "../../components/ui/alert-dialog";
 import { Select } from "../../components/ui/select";
 import { Textarea } from "../../components/ui/textarea";
+import { ImageOff } from "lucide-react";
+import { Skeleton } from "../../components/ui/skeleton";
 
 import type { WarehouseAuthStatus } from "./types";
 
@@ -86,12 +88,12 @@ export function WarehouseQueue(props: {
   const PARTIAL_REASONS: Array<{ code: string; label: string }> = s.reasons?.length
     ? s.reasons
     : [
-        { code: "OUT_OF_STOCK", label: "Нет в наличии" },
-        { code: "DAMAGED", label: "Повреждено" },
-        { code: "NOT_FOUND", label: "Не найдено" },
-        { code: "SUBSTITUTED", label: "Замена" },
-        { code: "OTHER", label: "Другое" },
-      ];
+      { code: "OUT_OF_STOCK", label: "Нет в наличии" },
+      { code: "DAMAGED", label: "Повреждено" },
+      { code: "NOT_FOUND", label: "Не найдено" },
+      { code: "SUBSTITUTED", label: "Замена" },
+      { code: "OTHER", label: "Другое" },
+    ];
 
   const sessionActive = Boolean(s.selectedId !== null && s.detail?.picking?.is_active);
   const canFocusScan =
@@ -204,6 +206,38 @@ export function WarehouseQueue(props: {
 
     const complete = pickingItems.length > 0 && notScanned.length === 0;
 
+    const PickItemThumb = (p: { url: string | null | undefined; alt: string }) => {
+      const [state, setState] = React.useState<"idle" | "loading" | "loaded" | "error">("idle");
+
+      React.useEffect(() => {
+        const u = (p.url || "").trim();
+        setState(u ? "loading" : "error");
+      }, [p.url]);
+
+      return (
+        <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-md border bg-muted">
+          {state === "loading" ? <Skeleton className="absolute inset-0" /> : null}
+          {state === "error" ? (
+            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+              <ImageOff className="h-4 w-4" />
+            </div>
+          ) : null}
+          {p.url ? (
+            <img
+              src={p.url}
+              alt={p.alt}
+              className={cn("absolute inset-0 h-full w-full object-cover", state === "loaded" ? "opacity-100" : "opacity-0")}
+              loading="lazy"
+              decoding="async"
+              referrerPolicy="no-referrer"
+              onLoad={() => setState("loaded")}
+              onError={() => setState("error")}
+            />
+          ) : null}
+        </div>
+      );
+    };
+
     const renderPickItem = (it: (typeof pickingItems)[number]) => (
       <div
         key={it.id}
@@ -214,10 +248,13 @@ export function WarehouseQueue(props: {
           s.highlightItemId === it.id && "ring-2 ring-primary",
         )}
       >
-        <div className="min-w-0">
-          <div className="truncate font-medium">{it.name}</div>
-          <div className="truncate text-xs text-muted-foreground">
-            {it.sku ? `SKU: ${it.sku}` : "SKU: —"} • штрихкодов: {it.barcodes?.length ?? 0}
+        <div className="min-w-0 flex items-center gap-3">
+          <PickItemThumb url={it.main_image_mini_url} alt={it.name} />
+          <div className="min-w-0">
+            <div className="truncate font-medium">{it.name}</div>
+            <div className="truncate text-xs text-muted-foreground">
+              {it.sku ? `SKU: ${it.sku}` : "SKU: —"} • штрихкодов: {it.barcodes?.length ?? 0}
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
