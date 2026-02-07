@@ -97,7 +97,14 @@ export function WarehouseQueue(props: {
 
   const sessionActive = Boolean(s.selectedId !== null && s.detail?.picking?.is_active);
   const canFocusScan =
-    sessionActive && !offline && !props.forcedUpdate && !s.scanBusy && !s.finishBusy && !s.finishConfirmOpen && !s.partialOpen;
+    s.selectedId !== null &&
+    s.mode !== "problems" &&
+    !offline &&
+    !props.forcedUpdate &&
+    !s.scanBusy &&
+    !s.finishBusy &&
+    !s.finishConfirmOpen &&
+    !s.partialOpen;
 
   const focusScanSoon = React.useCallback(() => {
     if (!canFocusScan) return;
@@ -114,10 +121,10 @@ export function WarehouseQueue(props: {
 
   React.useEffect(() => {
     // When dialogs close, return focus back to scan input.
-    if (!sessionActive) return;
+    if (s.selectedId === null) return;
     if (s.finishConfirmOpen || s.partialOpen) return;
     focusScanSoon();
-  }, [focusScanSoon, s.finishConfirmOpen, s.partialOpen, sessionActive]);
+  }, [focusScanSoon, s.finishConfirmOpen, s.partialOpen, s.selectedId]);
 
   if (!props.active) return null;
 
@@ -198,13 +205,25 @@ export function WarehouseQueue(props: {
 
   if (s.selectedId !== null) {
     const readOnly = s.mode === "problems";
-    const canStart = !readOnly && !offline && !props.forcedUpdate && !sessionActive;
 
-    const pickingItems = s.detail?.picking?.items || [];
+    const pickingItems = s.detail?.picking?.pick_items || s.detail?.picking?.items || [];
     const notScanned = pickingItems.filter((it) => (it.picked_qty ?? 0) < (it.ordered_qty ?? 0));
     const scanned = pickingItems.filter((it) => (it.picked_qty ?? 0) >= (it.ordered_qty ?? 0));
 
     const complete = pickingItems.length > 0 && notScanned.length === 0;
+    const orderItems = (s.detail?.order?.order_items as any[] | undefined) || [];
+    const previewItems = orderItems
+      .filter((it) => it && typeof it === "object")
+      .map((it, idx) => ({
+        id: `order_item_${idx}`,
+        name: String(it.name || "Товар"),
+        sku: it.sku ? String(it.sku) : null,
+        ms_assortment_id: it.ms_assortment_id ? String(it.ms_assortment_id) : null,
+        main_image_mini_url: (it.main_image_mini_url ? String(it.main_image_mini_url) : null) as string | null,
+        barcodes: Array.isArray(it.barcodes) ? it.barcodes.map((b: any) => String(b)) : [],
+        ordered_qty: Number(it.qty) || 0,
+        picked_qty: 0,
+      }));
 
     const PickItemThumb = (p: { url: string | null | undefined; alt: string }) => {
       const [state, setState] = React.useState<"idle" | "loading" | "loaded" | "error">("idle");
@@ -316,80 +335,80 @@ export function WarehouseQueue(props: {
                   )}
                 </div>
 
-                {!sessionActive && !readOnly && (
-                  <Button onClick={() => void s.pickingStart(s.selectedId!)} disabled={!canStart}>
-                    Начать сборку
-                  </Button>
-                )}
+                 {!readOnly && (
+                   <div className="space-y-2 rounded-md border p-3">
+                     <div className="grid gap-2 sm:grid-cols-2">
+                       <div className="grid gap-2">
+                         <Label>Скан-код</Label>
+                         <Input
+                           ref={scanInputRef}
+                           value={s.scanCode}
+                           onChange={(e) => s.setScanCode(e.target.value)}
+                           onKeyDown={(e) => {
+                             if (e.key === "Enter" || e.key === "Tab") {
+                               e.preventDefault();
+                               void s.pickingScan(s.scanCode);
+                             }
+                           }}
+                           placeholder="Отсканируй штрихкод/QR и нажми Enter/Tab (первый скан начнёт сборку)"
+                           disabled={offline || props.forcedUpdate || s.scanBusy}
+                           autoFocus
+                           onBlur={() => {
+                             // Keep focus for scanner workflows but don't steal it from mouse clicks.
+                             const sincePointerMs = Date.now() - lastPointerDownAtRef.current;
+                             if (sincePointerMs >= 350) focusScanSoon();
+                           }}
+                         />
+                         <div className="text-xs text-muted-foreground">
+                           Сканер вводит код как клавиатура и завершает Enter (иногда Tab). Первый скан автоматически начнёт сборку.
+                         </div>
+                       </div>
+                       <div className="flex flex-col justify-end gap-2">
+                         <Button
+                           onClick={() => void s.pickingScan(s.scanCode)}
+                           disabled={offline || props.forcedUpdate || s.scanBusy || !s.scanCode.trim()}
+                         >
+                           Применить
+                         </Button>
+                         <div className="flex flex-wrap gap-2">
+                           <Button
+                             variant="secondary"
+                             onClick={() => s.setPartialOpen(true)}
+                             disabled={!sessionActive || offline || props.forcedUpdate || s.scanBusy || s.finishBusy}
+                           >
+                             Завершить частично
+                           </Button>
+                           {complete && (
+                             <Button
+                               onClick={() => s.setFinishConfirmOpen(true)}
+                               disabled={!sessionActive || offline || props.forcedUpdate || s.scanBusy || s.finishBusy}
+                             >
+                               Завершить
+                             </Button>
+                           )}
+                         </div>
+                         {s.scanError && <Badge variant="destructive">{s.scanError}</Badge>}
+                         {s.pendingScan && (
+                           <Badge variant="secondary">
+                             Отправка: <span className="font-mono">{s.pendingScan.code}</span>
+                           </Badge>
+                         )}
+                         {s.lastScan && (
+                           <Badge variant="secondary">
+                             Последний скан: <span className="font-mono">{s.lastScan.code}</span>
+                           </Badge>
+                         )}
+                         {s.finishError && <Badge variant="destructive">{s.finishError}</Badge>}
+                       </div>
+                     </div>
 
-                {sessionActive && !readOnly && (
-                  <div className="space-y-2 rounded-md border p-3">
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <div className="grid gap-2">
-                        <Label>Скан-код</Label>
-                        <Input
-                          ref={scanInputRef}
-                          value={s.scanCode}
-                          onChange={(e) => s.setScanCode(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === "Tab") {
-                              e.preventDefault();
-                              void s.pickingScan(s.scanCode);
-                            }
-                          }}
-                          placeholder="Отсканируй штрихкод/QR и нажми Enter/Tab"
-                          disabled={offline || props.forcedUpdate || s.scanBusy}
-                          autoFocus
-                          onBlur={() => {
-                            // Keep focus for scanner workflows but don't steal it from mouse clicks.
-                            const sincePointerMs = Date.now() - lastPointerDownAtRef.current;
-                            if (sincePointerMs >= 350) focusScanSoon();
-                          }}
-                        />
-                        <div className="text-xs text-muted-foreground">
-                          Сканер обычно вводит код как клавиатура и завершает Enter (иногда Tab).
-                        </div>
-                      </div>
-                      <div className="flex flex-col justify-end gap-2">
-                        <Button
-                          onClick={() => void s.pickingScan(s.scanCode)}
-                          disabled={offline || props.forcedUpdate || s.scanBusy || !s.scanCode.trim()}
-                        >
-                          Применить
-                        </Button>
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            variant="secondary"
-                            onClick={() => s.setPartialOpen(true)}
-                            disabled={offline || props.forcedUpdate || s.scanBusy || s.finishBusy}
-                          >
-                            Завершить частично
-                          </Button>
-                          {complete && (
-                            <Button
-                              onClick={() => s.setFinishConfirmOpen(true)}
-                              disabled={offline || props.forcedUpdate || s.scanBusy || s.finishBusy}
-                            >
-                              Завершить
-                            </Button>
-                          )}
-                        </div>
-                        {s.scanError && <Badge variant="destructive">{s.scanError}</Badge>}
-                        {s.pendingScan && (
-                          <Badge variant="secondary">
-                            Отправка: <span className="font-mono">{s.pendingScan.code}</span>
-                          </Badge>
-                        )}
-                        {s.lastScan && (
-                          <Badge variant="secondary">
-                            Последний скан: <span className="font-mono">{s.lastScan.code}</span>
-                          </Badge>
-                        )}
-                        {s.finishError && <Badge variant="destructive">{s.finishError}</Badge>}
-                      </div>
-                    </div>
-                  </div>
-                )}
+                     {!sessionActive ? (
+                       <div className="text-xs text-muted-foreground">
+                         Сборка ещё не начата. Первый скан создаст сессию и начнёт сборку.
+                       </div>
+                     ) : null}
+                   </div>
+                 )}
 
                 {readOnly && (
                   <div className="rounded-md border bg-muted p-3 text-sm text-muted-foreground">
@@ -397,10 +416,10 @@ export function WarehouseQueue(props: {
                   </div>
                 )}
 
-                {s.detail.picking?.items?.length ? (
+                {(s.detail.picking?.pick_items?.length || s.detail.picking?.items?.length) ? (
                   <div className="space-y-2">
                     <div className="text-sm text-muted-foreground">
-                      Позиции: {s.detail.picking.items.length} • Прогресс:{" "}
+                      Позиции: {(s.detail.picking.pick_items?.length ?? s.detail.picking.items?.length) ?? 0} • Прогресс:{" "}
                       {Math.round(s.detail.picking.progress?.picked ?? 0)}/{Math.round(s.detail.picking.progress?.ordered ?? 0)}
                     </div>
                     <div className="grid gap-4 md:grid-cols-2">
@@ -424,7 +443,19 @@ export function WarehouseQueue(props: {
                     </div>
                   </div>
                 ) : (
-                  <div className="text-sm text-muted-foreground">Позиции пока не созданы. Нажми “Начать сборку”.</div>
+                  <div className="space-y-2">
+                    <div className="text-sm text-muted-foreground">
+                      Сессия сборки ещё не начата. Можно заранее посмотреть товары заказа — первый скан автоматически начнёт сборку.
+                    </div>
+                    {previewItems.length ? (
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium">Товары заказа</div>
+                        <div className="grid gap-2">{previewItems.map(renderPickItem)}</div>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-muted-foreground">Товары заказа не найдены.</div>
+                    )}
+                  </div>
                 )}
 
                 <div className="space-y-2 rounded-md border p-3">

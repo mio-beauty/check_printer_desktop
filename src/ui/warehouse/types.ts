@@ -38,7 +38,14 @@ export type OrderEventsResponse = {
 };
 
 export type OrderDetailResponse = {
-  order: { id: number; number: string; order_id: string | null; order_data: any; printed: 0 | 1 };
+  order: {
+    id: number;
+    number: string;
+    order_id: string | null;
+    order_data: any;
+    order_items?: any[];
+    printed: 0 | 1;
+  };
   picking: null | {
     id: string;
     status: string;
@@ -48,6 +55,18 @@ export type OrderDetailResponse = {
     started_at?: string | null;
     finished_at?: string | null;
     progress?: { picked: number; ordered: number };
+    // New name (preferred)
+    pick_items?: Array<{
+      id: string;
+      name: string;
+      sku: string | null;
+      ms_assortment_id: string | null;
+      main_image_mini_url?: string | null;
+      barcodes: string[];
+      ordered_qty: number;
+      picked_qty: number;
+    }>;
+    // Legacy name (backward compat during rollout)
     items?: Array<{
       id: string;
       name: string;

@@ -50,6 +50,7 @@ export function useWarehouseQueue(opts: {
   const [pendingScan, setPendingScan] = React.useState<{ code: string; ts: string } | null>(null);
   const [lastScan, setLastScan] = React.useState<{ code: string; itemId: string; ts: string } | null>(null);
   const [highlightItemId, setHighlightItemId] = React.useState<string | null>(null);
+  const startOnScanRef = React.useRef<Promise<void> | null>(null);
 
   const [reasons, setReasons] = React.useState<WarehouseReason[]>([]);
   const [reasonsError, setReasonsError] = React.useState<string | null>(null);
@@ -193,6 +194,38 @@ export function useWarehouseQueue(opts: {
     [openDetail, opts.forcedUpdate, refresh],
   );
 
+  const ensurePickingStarted = React.useCallback(
+    async (queueId: number) => {
+      if (opts.forcedUpdate) return;
+      if (!queueId) return;
+      if (detail?.picking?.is_active) return;
+
+      if (startOnScanRef.current) {
+        await startOnScanRef.current;
+        return;
+      }
+
+      startOnScanRef.current = (async () => {
+        if (!window.checkPrinter?.warehousePickingStart) {
+          throw new Error("warehousePickingStart недоступен (нужна пересборка desktop/preload)");
+        }
+        await window.checkPrinter.warehousePickingStart(queueId);
+        await openDetail(queueId);
+        await refresh("background");
+      })()
+        .catch((e) => {
+          setDetailError(String(e));
+          throw e;
+        })
+        .finally(() => {
+          startOnScanRef.current = null;
+        });
+
+      await startOnScanRef.current;
+    },
+    [detail?.picking?.is_active, openDetail, opts.forcedUpdate, refresh],
+  );
+
   const pickingFinish = React.useCallback(
     async (payload: { reason_code?: string | null; comment?: string | null } = {}) => {
       const queueId = selectedId;
@@ -227,6 +260,9 @@ export function useWarehouseQueue(opts: {
       if (!clean) return;
       if (opts.forcedUpdate) return;
 
+      // Best practice for scanner workflow: first scan auto-starts picking.
+      await ensurePickingStarted(queueId);
+
       setScanError(null);
       setScanBusy(true);
       setPendingScan({ code: clean, ts: new Date().toISOString() });
@@ -239,15 +275,16 @@ export function useWarehouseQueue(opts: {
         const pickedQty = Number(res?.item?.picked_qty);
         if (itemId && Number.isFinite(pickedQty)) {
           setDetail((prev) => {
-            if (!prev?.picking?.items) return prev;
-            const nextItems = prev.picking.items.map((it) => (String(it.id) === itemId ? { ...it, picked_qty: pickedQty } : it));
-            const progressPicked = (prev.picking.progress?.picked ?? 0) + 1;
-            const progressOrdered = prev.picking.progress?.ordered ?? 0;
+            const currentItems = prev?.picking?.pick_items || prev?.picking?.items;
+            if (!currentItems) return prev;
+            const nextItems = currentItems.map((it) => (String(it.id) === itemId ? { ...it, picked_qty: pickedQty } : it));
+            const progressPicked = nextItems.reduce((sum, it) => sum + (Number(it.picked_qty) || 0), 0);
+            const progressOrdered = nextItems.reduce((sum, it) => sum + (Number(it.ordered_qty) || 0), 0);
             return {
               ...prev,
               picking: {
                 ...prev.picking,
-                items: nextItems,
+                pick_items: nextItems,
                 progress: { picked: progressPicked, ordered: progressOrdered },
               },
             };
@@ -265,14 +302,14 @@ export function useWarehouseQueue(opts: {
         setPendingScan(null);
       }
     },
-    [openDetail, opts.forcedUpdate, selectedId],
+    [ensurePickingStarted, openDetail, opts.forcedUpdate, selectedId],
   );
 
   React.useEffect(() => {
     // Авто-завершение (с подтверждением): когда всё собрано, показываем confirm один раз на сессию.
     if (!detail?.picking?.is_active) return;
     const sessionId = String(detail.picking.id || "");
-    const items = detail.picking.items || [];
+    const items = detail.picking.pick_items || detail.picking.items || [];
     if (!sessionId || items.length === 0) return;
 
     const complete = items.every((it) => (it.picked_qty ?? 0) >= (it.ordered_qty ?? 0));
@@ -281,7 +318,7 @@ export function useWarehouseQueue(opts: {
     if (finishConfirmShownRef.current === sessionId) return;
     finishConfirmShownRef.current = sessionId;
     setFinishConfirmOpen(true);
-  }, [detail?.picking?.id, detail?.picking?.is_active, detail?.picking?.items]);
+  }, [detail?.picking?.id, detail?.picking?.is_active, detail?.picking?.pick_items, detail?.picking?.items]);
 
   React.useEffect(() => {
     if (!opts.active) return;
