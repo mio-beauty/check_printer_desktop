@@ -21,7 +21,7 @@ export function AppLayout({
   children,
 }: AppLayoutProps) {
   return (
-    <div className="h-screen bg-background text-foreground">
+    <div className="h-screen bg-background text-foreground w-full">
       <div className="flex h-full flex-col">
         <TitleBar
           connectionState={connectionState}

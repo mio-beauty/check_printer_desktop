@@ -5,43 +5,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../..
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Progress } from "../../components/ui/progress";
-
-type UpdateState =
-  | { kind: "idle" }
-  | { kind: "available"; message: string; forced: boolean }
-  | { kind: "downloading"; progress?: number }
-  | { kind: "ready"; message: string }
-  | { kind: "error"; message: string };
-
-type Settings = {
-  backendUrl: string;
-  printerClientToken: string | null;
-  clientId: string;
-  deviceAuth?: { printerId: string | null; accessToken: string | null; refreshToken: string | null };
-  printer: { host: string; port: number; encoding: string; name: string };
-  warehouse: { name: string; lat: number | null; lon: number | null };
-};
-
-type LogEntry = { ts: string; level: "info" | "warn" | "error"; message: string };
+import type { PrinterStatus, Settings, LogEntry, UpdateState } from "../types";
 
 export function StatusView(props: {
-  status: {
-    connected: boolean;
-    joined: boolean;
-    joinError: string | null;
-    backendUrl: string;
-    backend?: { httpOk: boolean; httpError: string | null; checkedAt: string | null; httpStatus?: number | null };
-    printer: {
-      host: string | null;
-      port: number;
-      encoding: string;
-      name: string;
-      reachability?: { configured: boolean; ok: boolean; checkedAt: string | null; error: string | null };
-    };
-    warehouse: { name: string; lat: number | null; lon: number | null };
-    appVersion?: string;
-    update?: { available: boolean; forced: boolean; message: string; downloading: boolean; progress: number | null; error: string | null };
-  } | null;
+  status: PrinterStatus | null;
   settings: Settings | null;
   setSettings: React.Dispatch<React.SetStateAction<Settings | null>>;
   logs: LogEntry[];
