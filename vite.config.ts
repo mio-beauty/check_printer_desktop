@@ -1,9 +1,10 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import path from 'path'
+
 
 export default defineConfig(({ command }) => ({
   plugins: [react()],
-  // В production Electron загружает index.html через file://, поэтому base должен быть относительным.
   base: command === "build" ? "./" : "/",
   build: {
     outDir: "dist",
@@ -12,5 +13,10 @@ export default defineConfig(({ command }) => ({
     port: 5173,
     strictPort: true,
     host: "127.0.0.1",
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
   },
 }));

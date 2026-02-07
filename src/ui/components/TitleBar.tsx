@@ -27,7 +27,7 @@ export function TitleBar({
 }: TitleBarProps) {
   return (
     <div
-      className="sticky top-0 z-50 flex items-center justify-between bg-background h-8"
+      className="sticky top-0 z-50 flex items-center justify-between bg-background h-8 border-b border-[#ECECEE]"
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
     >
       <div className="px-2 flex items-center gap-2">
