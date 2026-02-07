@@ -1,11 +1,10 @@
+"use client"
 
+import * as React from "react"
 import {
     BadgeCheck,
-    Bell,
     ChevronsUpDown,
-    CreditCard,
     LogOut,
-    Sparkles,
 } from "lucide-react"
 
 // import {
@@ -31,14 +30,28 @@ import {
 
 export function NavUser({
     user,
+    onLogout,
 }: {
     user: {
         name: string
         email: string
         // avatar: string
     }
+    onLogout: () => Promise<void>
 }) {
     const { isMobile } = useSidebar()
+    const [loggingOut, setLoggingOut] = React.useState(false)
+    const handleLogout = React.useCallback(async () => {
+        if (loggingOut) return
+        setLoggingOut(true)
+        try {
+            await onLogout()
+        } catch (error) {
+            console.error("logout failed", error)
+        } finally {
+            setLoggingOut(false)
+        }
+    }, [loggingOut, onLogout])
 
     return (
         <SidebarMenu>
@@ -88,9 +101,13 @@ export function NavUser({
                             </DropdownMenuItem>
                         </DropdownMenuGroup>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem className="text-red-600">
+                        <DropdownMenuItem
+                            className="text-red-600"
+                            onClick={handleLogout}
+                            disabled={loggingOut}
+                        >
                             <LogOut />
-                            Log out
+                            {loggingOut ? "Выход..." : "Log out"}
                         </DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>

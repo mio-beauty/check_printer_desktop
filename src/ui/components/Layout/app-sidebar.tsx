@@ -3,7 +3,6 @@
 import * as React from "react"
 import {
     Frame,
-    Map,
     PieChart,
     PanelLeftClose,
     PanelLeftOpen,
@@ -20,28 +19,18 @@ import {
     useSidebar,
 } from "@/components/ui/sidebar"
 
-const data = {
-    user: {
-        name: "shadcn",
-        email: "m@example.com",
-        avatar: "/avatars/shadcn.jpg",
-    },
-
-    projects: [
-        {
-            name: "Заказы к сборке",
-            url: "#",
-            icon: Frame,
-        },
-        {
-            name: "Статус",
-            url: "#",
-            icon: PieChart,
-        },
-    ],
+type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
+    warehouseName?: string | null
+    warehousePhone?: string | null
+    onLogout: () => Promise<void>
 }
 
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+export function AppSidebar({
+    warehouseName,
+    warehousePhone,
+    onLogout,
+    ...props
+}: AppSidebarProps) {
     const { toggleSidebar, state } = useSidebar()
 
     return (
@@ -97,10 +86,29 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 </button>
             </SidebarHeader>
             <SidebarContent>
-                <NavProjects projects={data.projects} />
+                <NavProjects
+                    projects={[
+                        {
+                            name: "Заказы к сборке",
+                            url: "/warehouse",
+                            icon: Frame,
+                        },
+                        {
+                            name: "Статус",
+                            url: "/",
+                            icon: PieChart,
+                        },
+                    ]}
+                />
             </SidebarContent>
             <SidebarFooter>
-                <NavUser user={data.user} />
+                <NavUser
+                    user={{
+                        name: warehousePhone ?? "Гость склада",
+                        email: warehouseName ?? "Склад",
+                    }}
+                    onLogout={onLogout}
+                />
             </SidebarFooter>
             <SidebarRail />
         </Sidebar>
