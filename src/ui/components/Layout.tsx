@@ -1,10 +1,11 @@
-import type { Dispatch, ReactNode, SetStateAction } from "react";
+import type { ReactNode } from "react";
 import { AppLayout } from "./AppLayout";
 import type { ConnectionState } from "./TitleBar";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Sidebar, SidebarLabel, SidebarSection } from "../../components/ui/sidebar";
 import type { PrinterStatus } from "../types";
+import { useLocation, useNavigate } from "react-router-dom";
 
 type LayoutProps = {
   connectionState: ConnectionState;
@@ -12,8 +13,6 @@ type LayoutProps = {
   onToggleMaximize: () => void;
   onClose: () => void;
   status: PrinterStatus | null;
-  view: "status" | "warehouse";
-  setView: Dispatch<SetStateAction<"status" | "warehouse">>;
   forcedUpdate: boolean;
   children: ReactNode;
 };
@@ -24,12 +23,13 @@ export function Layout({
   onToggleMaximize,
   onClose,
   status,
-  view,
-  setView,
   forcedUpdate,
   children,
 }: LayoutProps) {
   const authed = Boolean(status?.warehouseAuth?.hasToken);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const currentView = location.pathname === "/warehouse" ? "warehouse" : "status";
   const sidebar = authed ? (
     <Sidebar className="overflow-y-auto">
       <div className="space-y-3">
@@ -37,15 +37,15 @@ export function Layout({
           <SidebarLabel>Навигация</SidebarLabel>
           <Button
             className="w-full justify-start"
-            variant={view === "status" ? "default" : "outline"}
-            onClick={() => setView("status")}
+            variant={currentView === "status" ? "default" : "outline"}
+            onClick={() => navigate("/")}
           >
             Статус
           </Button>
           <Button
             className="w-full justify-start"
-            variant={view === "warehouse" ? "default" : "outline"}
-            onClick={() => setView("warehouse")}
+            variant={currentView === "warehouse" ? "default" : "outline"}
+            onClick={() => navigate("/warehouse")}
           >
             Склад
           </Button>

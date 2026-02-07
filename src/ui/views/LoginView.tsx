@@ -4,16 +4,13 @@ import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
-
-type Settings = {
-  backendUrl: string;
-};
+import type { Settings } from "../types";
 
 export function LoginView(props: {
   online: boolean;
   forcedUpdate: boolean;
   settings: Settings | null;
-  setSettings: React.Dispatch<React.SetStateAction<any>>;
+  setSettings: React.Dispatch<React.SetStateAction<Settings | null>>;
 }) {
   const [phone, setPhone] = React.useState("");
   const [password, setPassword] = React.useState("");
