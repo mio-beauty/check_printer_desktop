@@ -27,6 +27,14 @@ export function Layout({
   void status;
   void forcedUpdate;
 
+  const handleLogout = React.useCallback(async () => {
+    try {
+      await window.checkPrinter?.warehouseLogout?.();
+    } catch (error) {
+      console.error("warehouse logout failed", error);
+    }
+  }, []);
+
   return (
     <SidebarProvider>
       <AppLayout
@@ -34,7 +42,13 @@ export function Layout({
         onMinimize={onMinimize}
         onToggleMaximize={onToggleMaximize}
         onClose={onClose}
-        sidebar={<AppSidebar />}
+        sidebar={
+          <AppSidebar
+            warehouseName={status?.warehouse?.name ?? null}
+            warehousePhone={status?.warehouseAuth?.phone ?? null}
+            onLogout={handleLogout}
+          />
+        }
       >
         {children}
       </AppLayout>
