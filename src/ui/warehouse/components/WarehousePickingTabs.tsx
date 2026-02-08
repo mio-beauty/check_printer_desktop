@@ -60,13 +60,13 @@ export function WarehousePickingTabs(props: {
       <TabsTrigger
         key={o.id}
         value={String(o.id)}
-        className=" gap-3 rounded-lg border-0 bg-transparent px-2 py-2 text-black hover:bg-black/5 data-[state=active]:bg-black/5 data-[state=active]:text-black"
+        className="gap-3 rounded-lg border-0 bg-transparent px-2 py-2 text-black hover:bg-black/5 data-[state=active]:bg-black/5 data-[state=active]:text-black first:ml-1"
       >
         <ProgressRing value={pct} className="h-4 w-4 shrink-0" />
-        <div className="min-w-0 ">
-          <div className="flex items-center gap-2 ">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
             <span className="truncate font-bold">{o.number ? `#${o.number}` : `#${o.id}`}</span>
-            <span className=" text-black/50">
+            <span className="text-black/50">
               {Math.round(picked)}/{Math.round(ordered)}
             </span>
           </div>
@@ -87,7 +87,7 @@ export function WarehousePickingTabs(props: {
           props.onSelectOrder(Number(v));
         }}
       >
-        <div className="flex items-stretch">
+        <div className="flex py-1 items-center">
           <div className="flex items-center gap-1 px-2">
             <Button
               variant="ghost"
@@ -109,10 +109,10 @@ export function WarehousePickingTabs(props: {
             </Button>
           </div>
 
-          <div className="my-2 w-px bg-[#EDEDED]" />
+          <div className="h-8 w-px bg-[#EDEDED]" />
 
-          <div ref={scrollRef} className="flex-1 overflow-x-auto text-black">
-            <TabsList className="w-max min-w-full gap-[2px] rounded-none bg-transparent p-0">
+          <div ref={scrollRef} className="flex flex-1 items-center overflow-x-auto text-black">
+            <TabsList className="h-10 w-max min-w-full gap-[2px] rounded-none bg-transparent p-0">
               {props.activePickingOrders.map(renderPickingTab)}
             </TabsList>
           </div>
