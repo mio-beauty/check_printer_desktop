@@ -15,7 +15,7 @@ type Props = {
   onUpdate: () => Promise<void> | void;
 };
 
-export function ForcedUpdateView(props: Props) {
+export function ForcedUpdatePage(props: Props) {
   const pct = props.downloading ? Math.max(0, Math.min(100, Number(props.progress ?? 0))) : null;
 
   return (

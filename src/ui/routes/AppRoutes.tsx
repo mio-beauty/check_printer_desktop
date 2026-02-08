@@ -2,9 +2,9 @@ import React from "react";
 import { HashRouter, Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { ConnectionState } from "../components/TitleBar";
 import { Layout } from "../components/Layout";
-import { WarehouseQueue } from "../WarehouseQueue";
-import { StatusView } from "../views/StatusView";
-import { LoginView } from "../views/LoginView";
+import { WarehousePage } from "../pages/WarehousePage";
+import { StatusPage } from "../pages/StatusPage";
+import { LoginPage } from "../pages/LoginPage";
 import type { Settings, UpdateState, LogEntry, PrinterStatus } from "../types";
 
 type AppRoutesProps = {
@@ -62,7 +62,7 @@ export function AppRoutes(props: AppRoutesProps) {
             <Route
               index
               element={
-                <StatusView
+                <StatusPage
                   status={props.status}
                   settings={props.settings}
                   setSettings={props.setSettings}
@@ -80,7 +80,7 @@ export function AppRoutes(props: AppRoutesProps) {
             <Route
               path="warehouse"
               element={
-                <WarehouseQueue
+                <WarehousePage
                   active
                   online={online}
                   forcedUpdate={props.forcedUpdate}
@@ -108,7 +108,7 @@ function LoginRoute(props: {
     return <Navigate to="/" replace />;
   }
   return (
-    <LoginView
+    <LoginPage
       online={props.online}
       forcedUpdate={props.forcedUpdate}
       settings={props.settings}

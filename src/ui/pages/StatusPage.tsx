@@ -7,7 +7,7 @@ import { Label } from "../../components/ui/label";
 import { Progress } from "../../components/ui/progress";
 import type { PrinterStatus, Settings, LogEntry, UpdateState } from "../types";
 
-export function StatusView(props: {
+export function StatusPage(props: {
   status: PrinterStatus | null;
   settings: Settings | null;
   setSettings: React.Dispatch<React.SetStateAction<Settings | null>>;

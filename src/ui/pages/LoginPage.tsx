@@ -6,7 +6,7 @@ import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import type { Settings } from "../types";
 
-export function LoginView(props: {
+export function LoginPage(props: {
   online: boolean;
   forcedUpdate: boolean;
   settings: Settings | null;

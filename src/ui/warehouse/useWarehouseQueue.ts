@@ -457,3 +457,5 @@ export function useWarehouseQueue(opts: {
     setPartialComment,
   };
 }
+
+export type WarehouseQueueState = ReturnType<typeof useWarehouseQueue>;
