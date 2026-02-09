@@ -22,7 +22,7 @@ import {
   AlertDialogTitle,
 } from "../../../components/ui/alert-dialog";
 
-import { formatSum, statusBadgeVariant, statusLabel } from "../ui";
+import { formatSum } from "../ui";
 import type { WarehouseQueueState } from "../useWarehouseQueue";
 
 export function WarehousePickingPage(props: {
@@ -194,9 +194,6 @@ export function WarehousePickingPage(props: {
                 <Badge variant={s.detail.order.printed ? "default" : "secondary"}>
                   {s.detail.order.printed ? "Печатался" : "Не печатался"}
                 </Badge>
-                {s.detail.picking && (
-                  <Badge variant={statusBadgeVariant(s.detail.picking.status)}>{statusLabel(s.detail.picking.status)}</Badge>
-                )}
               </div>
 
               {!readOnly && (
@@ -347,7 +344,7 @@ export function WarehousePickingPage(props: {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Завершить сборку?</AlertDialogTitle>
-            <AlertDialogDescription>Все товары отсканированы. Завершить сборку и отметить заказ как “Собран”?</AlertDialogDescription>
+            <AlertDialogDescription>Все товары отсканированы. Завершить сборку и отметить заказ как завершённый?</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={s.finishBusy}>Отмена</AlertDialogCancel>

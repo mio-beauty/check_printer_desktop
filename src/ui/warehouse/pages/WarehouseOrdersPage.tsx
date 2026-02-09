@@ -1,13 +1,13 @@
 import * as React from "react";
 
-import { CheckCircle2, Clock, Package, Phone, Printer, Search, TriangleAlert, User } from "lucide-react";
+import { CheckCircle2, Clock, Package, Phone, Search, TriangleAlert, User } from "lucide-react";
 
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card";
 import { Input } from "../../../components/ui/input";
 
-import { formatSum, percent, statusBadgeVariant, statusLabel } from "../ui";
+import { formatSum, percent } from "../ui";
 import type { OrderItem } from "../types";
 import type { WarehouseQueueState } from "../useWarehouseQueue";
 import { cn } from "../../../lib/utils";
@@ -15,6 +15,7 @@ import { cn } from "../../../lib/utils";
 function StatusFilterChip(props: {
   active: boolean;
   label: string;
+  srLabel?: string;
   icon: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
@@ -24,16 +25,44 @@ function StatusFilterChip(props: {
       type="button"
       onClick={props.onClick}
       disabled={props.disabled}
+      aria-label={props.srLabel ?? props.label}
       className={cn(
-        "inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ",
+        "inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors",
         props.active ? "bg-violet-100 text-violet-700" : "text-[#747479] hover:bg-black/5 hover:text-black",
-        props.disabled && "",
+        props.disabled && "opacity-60",
       )}
     >
       <span>{props.icon}</span>
-      {props.label}
+      <span>{props.label}</span>
     </button>
   );
+}
+
+function safeToUpper(s: string | null | undefined): string {
+  return String(s || "").toUpperCase();
+}
+
+function formatRuDateTime(input: string | null | undefined): string | null {
+  const iso = String(input || "").trim();
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+
+  const parts = new Intl.DateTimeFormat("ru-RU", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(d);
+
+  const day = parts.find((p) => p.type === "day")?.value;
+  const monthRaw = parts.find((p) => p.type === "month")?.value;
+  const hour = parts.find((p) => p.type === "hour")?.value;
+  const minute = parts.find((p) => p.type === "minute")?.value;
+
+  if (!day || !monthRaw || !hour || !minute) return null;
+  const month = monthRaw.replace(/\.$/, "");
+  return `${day} ${month}, ${hour}:${minute}`;
 }
 
 function ProgressCircle(props: { value: number; label: string }) {
@@ -68,8 +97,6 @@ function ProgressCircle(props: { value: number; label: string }) {
 function OrderCard(props: {
   it: OrderItem;
   mode: WarehouseQueueState["mode"];
-  statusLabel: string;
-  statusVariant: ReturnType<typeof statusBadgeVariant>;
   reasonLabel: string | null;
   forcedUpdate: boolean;
   actionsDisabled: boolean;
@@ -78,53 +105,46 @@ function OrderCard(props: {
   primaryLabel?: string | null;
 }) {
   const pct = percent(props.it.progress?.picked ?? 0, props.it.progress?.ordered ?? 0);
-  const printed = Boolean(props.it.printed);
+  const createdAtRaw =
+    (props.it as any).created_at ??
+    (props.it as any).createdAt ??
+    (props.it as any).created ??
+    (props.it as any).order_created_at ??
+    (props.it as any).orderCreatedAt ??
+    props.it.started_at ??
+    null;
+  const createdAt = formatRuDateTime(createdAtRaw);
 
   return (
-    <div className="group rounded-2xl border bg-white p-4 shadow-sm transition-shadow hover:shadow-md">
+    <div
+      role="button"
+      tabIndex={props.forcedUpdate ? -1 : 0}
+      onClick={() => {
+        if (props.forcedUpdate) return;
+        props.onOpen();
+      }}
+      onKeyDown={(e) => {
+        if (props.forcedUpdate) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          props.onOpen();
+        }
+      }}
+      className={cn(
+        "group cursor-pointer rounded-2xl border bg-white p-4 shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+        props.forcedUpdate && "cursor-not-allowed opacity-70",
+      )}
+    >
       <div className="flex items-start justify-between gap-4">
-        <button
-          type="button"
-          className="min-w-0 text-left"
-          onClick={props.onOpen}
-          disabled={props.forcedUpdate}
-        >
+        <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <div className="truncate text-lg font-semibold">{props.it.number ? `#${props.it.number}` : `#${props.it.id}`}</div>
-            <Badge variant={props.statusVariant} className="rounded-full px-2.5 py-0.5">
-              {props.statusLabel}
-            </Badge>
-            {printed ? (
-              <Badge className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-emerald-700 hover:bg-emerald-50">Напечатано</Badge>
-            ) : (
-              <Badge variant="secondary" className="rounded-full px-2.5 py-0.5">
-                Не печаталось
-              </Badge>
-            )}
-            {props.mode === "problems" && props.reasonLabel ? (
-              <Badge variant="secondary" className="rounded-full px-2.5 py-0.5">
-                Причина: {props.reasonLabel}
-              </Badge>
-            ) : null}
           </div>
-          <div className="mt-1 text-xs text-muted-foreground">
-            {props.it.order_id ? <span className="font-mono">ID: {props.it.order_id}</span> : null}
-            {props.it.order_id ? <span className="mx-2">•</span> : null}
-            Прогресс: {Math.round(props.it.progress?.picked ?? 0)}/{Math.round(props.it.progress?.ordered ?? 0)}
-          </div>
-        </button>
+          <div className="mt-1 text-xs text-muted-foreground">Заказ создан: {createdAt ?? "—"}</div>
+        </div>
 
         <div className="flex items-center gap-2">
           <ProgressCircle value={pct} label={`${Math.round(pct)}%`} />
-          <div
-            className={cn(
-              "grid h-12 w-12 place-items-center rounded-full border",
-              printed ? "border-emerald-100 bg-emerald-500 text-white" : "bg-white text-muted-foreground",
-            )}
-            title={printed ? "Напечатано" : "Не печаталось"}
-          >
-            <Printer className="h-5 w-5" />
-          </div>
         </div>
       </div>
 
@@ -159,11 +179,14 @@ function OrderCard(props: {
       ) : null}
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        <Button variant="outline" onClick={props.onOpen} disabled={props.actionsDisabled}>
-          Открыть
-        </Button>
         {props.primaryLabel && props.onPrimary ? (
-          <Button onClick={props.onPrimary} disabled={props.actionsDisabled}>
+          <Button
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onPrimary?.();
+            }}
+            disabled={props.actionsDisabled}
+          >
             {props.primaryLabel}
           </Button>
         ) : null}
@@ -187,6 +210,24 @@ export function WarehouseOrdersPage(props: {
   const headerTitle = s.mode === "problems" ? "Проблемы" : "Очередь заказов";
   const searchPlaceholder =
     s.mode === "problems" ? "Поиск по номеру, ID, телефону, коду" : "Поиск по номеру, ID, телефону";
+
+  const visibleItems = React.useMemo(() => {
+    const items = Array.isArray(s.data?.items) ? s.data!.items : [];
+
+    // Safety net: never show PICKED orders outside the dedicated completed filter.
+    const filtered =
+      s.mode === "queue" && safeToUpper(s.statusFilter) !== "PICKED"
+        ? items.filter((it) => safeToUpper(it.picking_status) !== "PICKED")
+        : items;
+
+    const score = (it: OrderItem) => percent(Number(it.progress?.picked ?? 0), Number(it.progress?.ordered ?? 0));
+
+    return [...filtered].sort((a, b) => {
+      const diff = score(b) - score(a);
+      if (diff !== 0) return diff;
+      return (b.id ?? 0) - (a.id ?? 0);
+    });
+  }, [s.data?.items, s.mode, s.statusFilter]);
 
   return (
     <div className="space-y-4">
@@ -222,6 +263,7 @@ export function WarehouseOrdersPage(props: {
                   <StatusFilterChip
                     active={s.statusFilter === "TO_PICK"}
                     label="К сборке"
+                    srLabel="Фильтр 1"
                     icon={<CheckCircle2 className="h-4 w-4" />}
                     onClick={() => s.setStatusFilter("TO_PICK")}
                     disabled={s.loading}
@@ -229,6 +271,7 @@ export function WarehouseOrdersPage(props: {
                   <StatusFilterChip
                     active={s.statusFilter === "PICKING"}
                     label="Собирается"
+                    srLabel="Фильтр 2"
                     icon={<Clock className="h-4 w-4" />}
                     onClick={() => s.setStatusFilter("PICKING")}
                     disabled={s.loading}
@@ -236,6 +279,7 @@ export function WarehouseOrdersPage(props: {
                   <StatusFilterChip
                     active={s.statusFilter === "PICKED"}
                     label="Собрано"
+                    srLabel="Фильтр 3"
                     icon={<CheckCircle2 className="h-4 w-4" />}
                     onClick={() => s.setStatusFilter("PICKED")}
                     disabled={s.loading}
@@ -246,6 +290,7 @@ export function WarehouseOrdersPage(props: {
                   <StatusFilterChip
                     active={s.statusFilter === "PARTIALLY_PICKED"}
                     label="Частично"
+                    srLabel="Фильтр A"
                     icon={<Clock className="h-5 w-5" />}
                     onClick={() => s.setStatusFilter("PARTIALLY_PICKED")}
                     disabled={s.loading}
@@ -253,6 +298,7 @@ export function WarehouseOrdersPage(props: {
                   <StatusFilterChip
                     active={s.statusFilter === "PICK_FAILED"}
                     label="Ошибка"
+                    srLabel="Фильтр B"
                     icon={<TriangleAlert className="h-5 w-5" />}
                     onClick={() => s.setStatusFilter("PICK_FAILED")}
                     disabled={s.loading}
@@ -292,10 +338,9 @@ export function WarehouseOrdersPage(props: {
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {s.loading && <div className="text-sm text-muted-foreground">Загрузка…</div>}
             {!s.loading && s.refreshing && <div className="text-xs text-muted-foreground">Обновление…</div>}
-            {!s.loading && (s.data?.items?.length ?? 0) === 0 && <div className="text-sm text-muted-foreground">Пусто.</div>}
+            {!s.loading && visibleItems.length === 0 && <div className="text-sm text-muted-foreground">Пусто.</div>}
 
-            {(s.data?.items || []).map((it) => {
-              const label = statusLabel(it.picking_status);
+            {visibleItems.map((it) => {
               const primaryCta = it.active_session_id || it.picking_status === "PICKING" ? "Продолжить" : "Начать";
               const ctaDisabled = props.actionsDisabled;
               const reasonLabel = it.partial_reason_code
@@ -307,8 +352,6 @@ export function WarehouseOrdersPage(props: {
                   key={it.id}
                   it={it}
                   mode={s.mode}
-                  statusLabel={label}
-                  statusVariant={statusBadgeVariant(it.picking_status)}
                   reasonLabel={reasonLabel}
                   forcedUpdate={props.forcedUpdate}
                   actionsDisabled={ctaDisabled}

@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "../../../components/ui/tabs";
 
-import { percent, statusBadgeVariant, statusLabel } from "../ui";
+import { percent } from "../ui";
 
 function ProgressRing(props: { value: number; className?: string }) {
   const r = 6;
@@ -54,8 +54,6 @@ export function WarehousePickingTabs(props: {
     const picked = Number(o.progress?.picked ?? 0);
     const ordered = Number(o.progress?.ordered ?? 0);
     const pct = percent(picked, ordered);
-    const label = statusLabel(String(o.picking_status || ""));
-    const variant = statusBadgeVariant(String(o.picking_status || ""));
     return (
       <TabsTrigger
         key={o.id}
