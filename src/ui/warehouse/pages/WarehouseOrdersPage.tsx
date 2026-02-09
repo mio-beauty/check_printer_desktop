@@ -137,44 +137,41 @@ function OrderCard(props: {
         }
       }}
       className={cn(
-        "group cursor-pointer rounded-2xl border bg-white p-4 shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+        "group cursor-pointer rounded-2xl border bg-white p-0 transition-shadow hover:bg-[#F8F8F8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
         props.forcedUpdate && "cursor-not-allowed opacity-70",
       )}
     >
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
+      <div className="flex items-start justify-between gap-4 border-b border-[#EDEDED]">
+        <div className="min-w-0 p-3">
           <div className="flex flex-wrap items-center gap-2">
             <div className="truncate text-lg font-semibold">{props.it.number ? `#${props.it.number}` : `#${props.it.id}`}</div>
           </div>
           <div className="mt-1 text-xs text-muted-foreground">Заказ создан: {createdAt ?? "—"}</div>
-          {showFinishedMeta ? (
-            <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
-              <div>Заказ собран: {finishedAt}</div>
-              <div>Собирал: {finisherLabel ?? "—"}</div>
-            </div>
-          ) : null}
+
         </div>
 
-        <div className="flex items-center gap-2">
+
+
+        <div className="flex items-center gap-2 p-3">
           <ProgressCircle value={pct} label={`${Math.round(pct)}%`} />
         </div>
+
       </div>
 
-      <div className="mt-4 grid gap-2 text-sm">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
-            <User className="h-4 w-4" />
+      <div className=" grid text-[14px] py-1">
+
+        <div className="flex items-center justify-between gap-3 px-3 py-2">
+          <div className="flex min-w-0 items-center gap-2 text-[14px] text-black">
+            <User className="h-4 w-4 text-[#757575]" />
             <span className="truncate">{props.it.client_name || "—"}</span>
           </div>
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Phone className="h-4 w-4" />
+          <div className="flex items-center gap-2 text-[14px] text-[#757575]">
             <span className="font-mono">{props.it.client_phone || "—"}</span>
           </div>
         </div>
-
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Package className="h-4 w-4" />
+        <div className="flex items-center justify-between gap-3 px-3 py-2">
+          <div className="flex items-center gap-2 text-[14px] text-black">
+            <Package className="h-4 w-4 text-[#757575]" />
             <span>Товаров в заказе</span>
           </div>
           <div className="flex items-center gap-2">
@@ -185,6 +182,12 @@ function OrderCard(props: {
           </div>
         </div>
       </div>
+      {showFinishedMeta ? (
+        <div className="text-[13px] text-[#757575] px-3 py-[10px] border-t border-[#EDEDED]">
+          <div>Заказ собран: {finishedAt}</div>
+          <div>Собирал: {finisherLabel ?? "—"}</div>
+        </div>
+      ) : null}
 
       {props.mode === "problems" && props.it.partial_reason_comment ? (
         <div className="mt-3 line-clamp-2 text-xs text-muted-foreground">Комментарий: {String(props.it.partial_reason_comment)}</div>
