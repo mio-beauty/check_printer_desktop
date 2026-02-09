@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import { Badge, ChevronLeft, ImageOff, Info, Printer, RotateCw, ScanLine } from "lucide-react";
+import { Badge, ChevronLeft, ImageOff, Info, RotateCw, ScanLine } from "lucide-react";
 
 import {
   AlertDialog,
@@ -507,7 +507,6 @@ export function WarehousePickingPage(props: {
               className={cn("inline-flex items-center gap-2 rounded-lg border px-3 py-1 text-sm font-semibold", printUi.className)}
               title={printError || undefined}
             >
-              <Printer className="h-4 w-4" aria-hidden="true" />
               <span>{printUi.label}</span>
             </div>
 
