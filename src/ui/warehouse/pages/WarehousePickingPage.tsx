@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import { Badge, ChevronLeft, ImageOff, Info, ScanLine } from "lucide-react";
+import { Badge, ChevronLeft, ImageOff, Info, Printer, RotateCw, ScanLine } from "lucide-react";
 
 import {
   AlertDialog,
@@ -251,6 +251,15 @@ export function WarehousePickingPage(props: {
   const sessionActive = Boolean(s.selectedId !== null && s.detail?.picking?.is_active);
   const readOnly = s.mode === "problems";
 
+  const printStatus = s.detail?.order?.print_status ?? (s.detail?.order?.printed === 1 ? "printed" : "not_printed");
+  const printError = s.detail?.order?.print_error ?? null;
+  const printUi =
+    printStatus === "printed"
+      ? { label: "Напечатан", className: "border-emerald-200 bg-emerald-50 text-emerald-700" }
+      : printStatus === "print_failed"
+        ? { label: "Ошибка печати", className: "border-red-200 bg-red-50 text-red-700" }
+        : { label: "Не напечатан", className: "border-orange-200 bg-orange-50 text-orange-700" };
+
   const canFocusScan =
     s.selectedId !== null &&
     s.mode !== "problems" &&
@@ -478,9 +487,34 @@ export function WarehousePickingPage(props: {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-sm text-black/70">
-            <span>{`Прогресс: ${Math.round(overallPct)}%`}</span>
-            <ProgressRing value={overallPct} className="h-6 w-6" />
+          <div className="flex items-center gap-3">
+
+
+            <div className="flex items-center gap-2 text-sm text-black/70">
+              <span>{`Прогресс: ${Math.round(overallPct)}%`}</span>
+              <ProgressRing value={overallPct} className="h-6 w-6" />
+            </div>
+            <div
+              className={cn("inline-flex items-center gap-2 rounded-lg border px-3 py-1 text-sm font-semibold", printUi.className)}
+              title={printError || undefined}
+            >
+              <Printer className="h-4 w-4" aria-hidden="true" />
+              <span>{printUi.label}</span>
+            </div>
+
+            {printStatus === "print_failed" ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void s.printRetry?.()}
+                disabled={actionsDisabled || s.printRetryBusy}
+                className="h-9 gap-2 border-[#EDEDED] bg-white text-black hover:bg-black/5"
+              >
+                <RotateCw className={cn("h-4 w-4", s.printRetryBusy ? "animate-spin" : "")} aria-hidden="true" />
+                Повторить
+              </Button>
+            ) : null}
           </div>
         </div>
 

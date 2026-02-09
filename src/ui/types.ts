@@ -77,6 +77,7 @@ export interface CheckPrinter {
   warehouseOrders?: (params?: WarehouseOrdersParams) => Promise<OrdersResponse>;
   warehouseOrderDetail?: (queueId: number) => Promise<OrderDetailResponse>;
   warehouseOrderEvents?: (queueId: number) => Promise<OrderEventsResponse>;
+  warehousePrintRetry?: (queueId: number) => Promise<{ ok?: boolean; dispatched?: boolean; print_job?: { id: string; status: string; error?: string | null } }>;
   warehouseReasons?: () => Promise<{ reasons?: WarehouseReason[] }>;
   warehousePickingStart?: (queueId: number) => Promise<any>;
   warehousePickingScan?: (queueId: number, code: string) => Promise<WarehousePickingScanResult>;

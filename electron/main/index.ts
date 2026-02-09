@@ -1,4 +1,4 @@
-import { BrowserWindow, Menu, app, ipcMain } from "electron";
+import { BrowserWindow, Menu, app, globalShortcut, ipcMain } from "electron";
 import { createRequire } from "node:module";
 import net from "node:net";
 import path from "node:path";
@@ -794,7 +794,19 @@ async function createWindow() {
       }
     }
     if (lastErr) throw lastErr;
-    mainWindow.webContents.openDevTools({ mode: "detach" });
+
+    // "detach" can open DevTools off-screen (e.g. after monitor/layout changes).
+    // Use a docked mode by default, and still allow a shortcut to toggle it.
+    mainWindow.webContents.openDevTools({ mode: "right" });
+    globalShortcut.register("CommandOrControl+Shift+I", () => {
+      try {
+        if (!mainWindow) return;
+        if (mainWindow.webContents.isDevToolsOpened()) mainWindow.webContents.closeDevTools();
+        else mainWindow.webContents.openDevTools({ mode: "right" });
+      } catch {
+        // ignore
+      }
+    });
   } else {
     await mainWindow.loadFile(path.join(app.getAppPath(), "dist", "index.html"));
   }
@@ -827,6 +839,11 @@ async function createWindow() {
 app.whenReady().then(createWindow);
 
 app.on("window-all-closed", () => {
+  try {
+    globalShortcut.unregisterAll();
+  } catch {
+    // ignore
+  }
   if (process.platform !== "darwin") app.quit();
 });
 
@@ -1080,6 +1097,15 @@ ipcMain.handle("warehouse:orderEvents", async (_evt, queueId: number) => {
   const res = await warehouseRequestJson(`/api/warehouse/orders/${Number(queueId)}/events`, { method: "GET", timeoutMs: 12000 });
   if (!res.ok) {
     const msg = res.json?.message || `warehouse/events failed (${res.status})`;
+    throw new Error(String(msg));
+  }
+  return res.json;
+});
+
+ipcMain.handle("warehouse:printRetry", async (_evt, queueId: number) => {
+  const res = await warehouseRequestJson(`/api/warehouse/orders/${Number(queueId)}/print/retry`, { method: "POST", timeoutMs: 12000 });
+  if (!res.ok) {
+    const msg = res.json?.message || `warehouse/printRetry failed (${res.status})`;
     throw new Error(String(msg));
   }
   return res.json;

@@ -10,6 +10,8 @@ export type OrderItem = {
   client_phone: string | null;
   items_count: number | null;
   printed: 0 | 1;
+  print_status?: "not_printed" | "printed" | "print_failed" | string;
+  print_error?: string | null;
   picking_status: "TO_PICK" | "PICKING" | "PICKED" | "PARTIALLY_PICKED" | "PICK_FAILED" | string;
   active_session_id: string | null;
   progress: { picked: number; ordered: number };
@@ -48,6 +50,8 @@ export type OrderDetailResponse = {
     order_data: any;
     order_items?: any[];
     printed: 0 | 1;
+    print_status?: "not_printed" | "printed" | "print_failed" | string;
+    print_error?: string | null;
   };
   picking: null | {
     id: string;

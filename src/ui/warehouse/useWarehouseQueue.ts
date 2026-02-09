@@ -62,6 +62,8 @@ export function useWarehouseQueue(opts: {
   const finishConfirmShownRef = React.useRef<string | null>(null);
   const [finishBusy, setFinishBusy] = React.useState(false);
   const [finishError, setFinishError] = React.useState<string | null>(null);
+  const [printRetryBusy, setPrintRetryBusy] = React.useState(false);
+  const [printRetryError, setPrintRetryError] = React.useState<string | null>(null);
   const [partialOpen, setPartialOpen] = React.useState(false);
   const [partialReason, setPartialReason] = React.useState<string>("");
   const [partialComment, setPartialComment] = React.useState<string>("");
@@ -252,6 +254,32 @@ export function useWarehouseQueue(opts: {
     [opts.forcedUpdate, refresh, refreshPickingTabs, selectedId],
   );
 
+  const printRetry = React.useCallback(
+    async (queueId?: number) => {
+      const id = Number(queueId ?? selectedId);
+      if (!id) return;
+      if (opts.forcedUpdate) return;
+      if (!opts.online) return;
+
+      setPrintRetryError(null);
+      setPrintRetryBusy(true);
+      try {
+        if (!window.checkPrinter?.warehousePrintRetry) {
+          throw new Error("warehousePrintRetry недоступен (нужна пересборка desktop/preload)");
+        }
+        await window.checkPrinter.warehousePrintRetry(id);
+        await openDetail(id);
+        await refresh("background");
+      } catch (e) {
+        setPrintRetryError(String(e));
+        setDetailError(String(e));
+      } finally {
+        setPrintRetryBusy(false);
+      }
+    },
+    [openDetail, opts.forcedUpdate, opts.online, refresh, selectedId],
+  );
+
   const pickingScan = React.useCallback(
     async (code: string) => {
       const queueId = selectedId;
@@ -424,6 +452,9 @@ export function useWarehouseQueue(opts: {
     finishBusy,
     finishError,
     pickingFinish,
+    printRetryBusy,
+    printRetryError,
+    printRetry,
     partialOpen,
     setPartialOpen,
     partialReason,

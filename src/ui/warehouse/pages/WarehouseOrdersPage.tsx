@@ -248,8 +248,8 @@ export function WarehouseOrdersPage(props: {
         <div className="h-px bg-black/10" />
 
         <div className="bg-white px-4 py-4 text-black">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-            <div className="relative w-full max-w-[350px]">
+          <div className="flex flex-col gap-4 sm:flex-row justify-between sm:items-center">
+            <div className="relative w-full min-w-[275px] max-w-[350px]">
               <Search
                 className="pointer-events-none absolute left-2 top-1/2 h-[20px] w-[20px] -translate-y-1/2 text-[#747479]"
                 color="#747479"
@@ -262,7 +262,7 @@ export function WarehouseOrdersPage(props: {
               />
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+            <div className="flex flex-wrap items-center gap-2 min-w-[451px] sm:ml-auto">
               {s.mode === "queue" ? (
                 <>
                   <StatusFilterChip
