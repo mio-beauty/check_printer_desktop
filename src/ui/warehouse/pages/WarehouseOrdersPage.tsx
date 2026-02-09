@@ -11,6 +11,8 @@ import { formatSum, percent } from "../ui";
 import type { OrderItem } from "../types";
 import type { WarehouseQueueState } from "../useWarehouseQueue";
 import { cn } from "../../../lib/utils";
+import { BoxCheckIcon, ProfileFilledIcon } from "@/components/icons";
+
 
 function StatusFilterChip(props: {
   active: boolean;
@@ -74,7 +76,7 @@ function ProgressCircle(props: { value: number; label: string }) {
   const dashoffset = circumference - (pct / 100) * circumference;
 
   return (
-    <div className="relative grid h-12 w-12 place-items-center rounded-full bg-white">
+    <div className="relative grid h-12 w-12 place-items-center rounded-full bg-transparent">
       <svg viewBox="0 0 36 36" className="absolute inset-0 h-full w-full" aria-hidden="true">
         <circle cx={18} cy={18} r={r} className="fill-none stroke-muted" strokeWidth="3.5" />
         <circle
@@ -158,11 +160,11 @@ function OrderCard(props: {
 
       </div>
 
-      <div className=" grid text-[14px] py-1">
+      <div className=" grid text-[14px] py-2">
 
         <div className="flex items-center justify-between gap-3 px-3 py-2">
           <div className="flex min-w-0 items-center gap-2 text-[14px] text-black">
-            <User className="h-4 w-4 text-[#757575]" />
+            <ProfileFilledIcon className="h-5 w-5 text-[#757575]" />
             <span className="truncate">{props.it.client_name || "—"}</span>
           </div>
           <div className="flex items-center gap-2 text-[14px] text-[#757575]">
@@ -171,7 +173,7 @@ function OrderCard(props: {
         </div>
         <div className="flex items-center justify-between gap-3 px-3 py-2">
           <div className="flex items-center gap-2 text-[14px] text-black">
-            <Package className="h-4 w-4 text-[#757575]" />
+            <BoxCheckIcon className="h-5 w-5 text-[#757575]" />
             <span>Товаров в заказе</span>
           </div>
           <div className="flex items-center gap-2">
@@ -247,7 +249,7 @@ export function WarehouseOrdersPage(props: {
 
         <div className="bg-white px-4 py-4 text-black">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-            <div className="relative w-full max-w-[560px]">
+            <div className="relative w-full max-w-[350px]">
               <Search
                 className="pointer-events-none absolute left-2 top-1/2 h-[20px] w-[20px] -translate-y-1/2 text-[#747479]"
                 color="#747479"

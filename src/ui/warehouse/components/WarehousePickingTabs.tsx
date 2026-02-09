@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 
 import { Button } from "../../../components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "../../../components/ui/tabs";
@@ -46,18 +46,28 @@ export function WarehousePickingTabs(props: {
 }) {
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
 
-  const scrollBy = React.useCallback((dx: number) => {
-    scrollRef.current?.scrollBy({ left: dx, behavior: "smooth" });
-  }, []);
+  const goBackScreen = React.useCallback(() => {
+    if (props.tabValue === "queue") return;
+    props.onSelectQueue();
+  }, [props]);
+
+  React.useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const active = container.querySelector<HTMLElement>(`[data-tab-value="${CSS.escape(String(props.tabValue))}"]`);
+    active?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+  }, [props.tabValue]);
 
   const renderPickingTab = (o: (typeof props.activePickingOrders)[number]) => {
     const picked = Number(o.progress?.picked ?? 0);
     const ordered = Number(o.progress?.ordered ?? 0);
     const pct = percent(picked, ordered);
+
     return (
       <TabsTrigger
         key={o.id}
         value={String(o.id)}
+        data-tab-value={String(o.id)}
         className="gap-3 rounded-lg border-0 bg-transparent px-2 py-2 text-black hover:bg-black/5 data-[state=active]:bg-black/5 data-[state=active]:text-black first:ml-1"
       >
         <ProgressRing value={pct} className="h-4 w-4 shrink-0" />
@@ -85,25 +95,17 @@ export function WarehousePickingTabs(props: {
           props.onSelectOrder(Number(v));
         }}
       >
-        <div className="flex py-1 items-center">
+        <div className="flex items-center py-1">
           <div className="flex items-center gap-1 px-2">
             <Button
               variant="ghost"
               size="icon"
               className="h-10 w-10 text-[#0B0B0B] hover:bg-secondary/80"
-              onClick={() => scrollBy(-260)}
-              aria-label="Прокрутить влево"
+              onClick={goBackScreen}
+              aria-label="Назад"
+              disabled={props.tabValue === "queue"}
             >
               <ChevronLeft className="h-5 w-5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-10 w-10 text-[#0B0B0B] hover:bg-secondary/80"
-              onClick={() => scrollBy(260)}
-              aria-label="Прокрутить вправо"
-            >
-              <ChevronRight className="h-5 w-5" />
             </Button>
           </div>
 
