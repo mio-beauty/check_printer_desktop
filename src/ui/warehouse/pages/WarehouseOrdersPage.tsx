@@ -1,13 +1,14 @@
 import * as React from "react";
 
-import { CheckCircle2, Clock, Search, TriangleAlert } from "lucide-react";
+import { CheckCircle2, Clock, Package, Phone, Printer, Search, TriangleAlert, User } from "lucide-react";
 
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card";
 import { Input } from "../../../components/ui/input";
 
-import { formatSum, statusBadgeVariant, statusLabel } from "../ui";
+import { formatSum, percent, statusBadgeVariant, statusLabel } from "../ui";
+import type { OrderItem } from "../types";
 import type { WarehouseQueueState } from "../useWarehouseQueue";
 import { cn } from "../../../lib/utils";
 
@@ -32,6 +33,142 @@ function StatusFilterChip(props: {
       <span>{props.icon}</span>
       {props.label}
     </button>
+  );
+}
+
+function ProgressCircle(props: { value: number; label: string }) {
+  const r = 16;
+  const cx = 18;
+  const cy = 18;
+  const circumference = 2 * Math.PI * r;
+  const pct = Math.max(0, Math.min(100, Number(props.value) || 0));
+  const dashoffset = circumference - (pct / 100) * circumference;
+
+  return (
+    <div className="relative grid h-12 w-12 place-items-center rounded-full border bg-white">
+      <svg viewBox="0 0 36 36" className="absolute inset-0 h-full w-full" aria-hidden="true">
+        <circle cx={18} cy={18} r={r} className="fill-none stroke-muted" strokeWidth="3.5" />
+        <circle
+          cx={18}
+          cy={18}
+          r={r}
+          className="fill-none stroke-emerald-500"
+          strokeWidth="3.5"
+          strokeLinecap="round"
+          strokeDasharray={`${circumference} ${circumference}`}
+          strokeDashoffset={dashoffset}
+          transform="rotate(-90 18 18)"
+        />
+      </svg>
+      <div className="text-xs font-semibold text-black">{props.label}</div>
+    </div>
+  );
+}
+
+function OrderCard(props: {
+  it: OrderItem;
+  mode: WarehouseQueueState["mode"];
+  statusLabel: string;
+  statusVariant: ReturnType<typeof statusBadgeVariant>;
+  reasonLabel: string | null;
+  forcedUpdate: boolean;
+  actionsDisabled: boolean;
+  onOpen: () => void;
+  onPrimary?: () => void;
+  primaryLabel?: string | null;
+}) {
+  const pct = percent(props.it.progress?.picked ?? 0, props.it.progress?.ordered ?? 0);
+  const printed = Boolean(props.it.printed);
+
+  return (
+    <div className="group rounded-2xl border bg-white p-4 shadow-sm transition-shadow hover:shadow-md">
+      <div className="flex items-start justify-between gap-4">
+        <button
+          type="button"
+          className="min-w-0 text-left"
+          onClick={props.onOpen}
+          disabled={props.forcedUpdate}
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="truncate text-lg font-semibold">{props.it.number ? `#${props.it.number}` : `#${props.it.id}`}</div>
+            <Badge variant={props.statusVariant} className="rounded-full px-2.5 py-0.5">
+              {props.statusLabel}
+            </Badge>
+            {printed ? (
+              <Badge className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-emerald-700 hover:bg-emerald-50">Напечатано</Badge>
+            ) : (
+              <Badge variant="secondary" className="rounded-full px-2.5 py-0.5">
+                Не печаталось
+              </Badge>
+            )}
+            {props.mode === "problems" && props.reasonLabel ? (
+              <Badge variant="secondary" className="rounded-full px-2.5 py-0.5">
+                Причина: {props.reasonLabel}
+              </Badge>
+            ) : null}
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            {props.it.order_id ? <span className="font-mono">ID: {props.it.order_id}</span> : null}
+            {props.it.order_id ? <span className="mx-2">•</span> : null}
+            Прогресс: {Math.round(props.it.progress?.picked ?? 0)}/{Math.round(props.it.progress?.ordered ?? 0)}
+          </div>
+        </button>
+
+        <div className="flex items-center gap-2">
+          <ProgressCircle value={pct} label={`${Math.round(pct)}%`} />
+          <div
+            className={cn(
+              "grid h-12 w-12 place-items-center rounded-full border",
+              printed ? "border-emerald-100 bg-emerald-500 text-white" : "bg-white text-muted-foreground",
+            )}
+            title={printed ? "Напечатано" : "Не печаталось"}
+          >
+            <Printer className="h-5 w-5" />
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-2 text-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
+            <User className="h-4 w-4" />
+            <span className="truncate">{props.it.client_name || "—"}</span>
+          </div>
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Phone className="h-4 w-4" />
+            <span className="font-mono">{props.it.client_phone || "—"}</span>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Package className="h-4 w-4" />
+            <span>Товаров в заказе</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="rounded-full justify-center px-1.5 py-0 bg-[#757575] text-white font-medium">
+              {props.it.items_count ?? "—"}
+            </Badge>
+            <div className="font-medium pl-2 border-l border-[#e5e5e5] text-[14px]">{formatSum(props.it.total)} сум</div>
+          </div>
+        </div>
+      </div>
+
+      {props.mode === "problems" && props.it.partial_reason_comment ? (
+        <div className="mt-3 line-clamp-2 text-xs text-muted-foreground">Комментарий: {String(props.it.partial_reason_comment)}</div>
+      ) : null}
+
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <Button variant="outline" onClick={props.onOpen} disabled={props.actionsDisabled}>
+          Открыть
+        </Button>
+        {props.primaryLabel && props.onPrimary ? (
+          <Button onClick={props.onPrimary} disabled={props.actionsDisabled}>
+            {props.primaryLabel}
+          </Button>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
@@ -152,7 +289,7 @@ export function WarehouseOrdersPage(props: {
         <CardContent className="space-y-3">
           {s.error && <Badge variant="destructive">{s.error}</Badge>}
 
-          <div className="space-y-2">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {s.loading && <div className="text-sm text-muted-foreground">Загрузка…</div>}
             {!s.loading && s.refreshing && <div className="text-xs text-muted-foreground">Обновление…</div>}
             {!s.loading && (s.data?.items?.length ?? 0) === 0 && <div className="text-sm text-muted-foreground">Пусто.</div>}
@@ -166,46 +303,19 @@ export function WarehouseOrdersPage(props: {
                 : null;
 
               return (
-                <div key={it.id} className="flex flex-col gap-2 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        className="truncate text-left font-semibold underline-offset-4 hover:underline"
-                        onClick={() => void s.openDetail(it.id)}
-                        disabled={props.forcedUpdate}
-                      >
-                        {it.number || `#${it.id}`}
-                      </button>
-                      <Badge variant={statusBadgeVariant(it.picking_status)}>{label}</Badge>
-                      <Badge variant="secondary">
-                        {Math.round(it.progress?.picked ?? 0)}/{Math.round(it.progress?.ordered ?? 0)}
-                      </Badge>
-                      {it.printed ? <Badge variant="default">Печатался</Badge> : <Badge variant="secondary">Не печатался</Badge>}
-                      {s.mode === "problems" && reasonLabel ? <Badge variant="secondary">Причина: {reasonLabel}</Badge> : null}
-                    </div>
-                    <div className="mt-1 truncate text-xs text-muted-foreground">
-                      {it.client_name ? it.client_name : "—"} • {it.client_phone ? it.client_phone : "—"} • позиций:{" "}
-                      {it.items_count ?? "—"} • сумма: {formatSum(it.total)} сум
-                    </div>
-                    {s.mode === "problems" && it.partial_reason_comment ? (
-                      <div className="mt-1 truncate text-xs text-muted-foreground">Комментарий: {String(it.partial_reason_comment)}</div>
-                    ) : null}
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button variant="outline" onClick={() => void s.openDetail(it.id)} disabled={ctaDisabled}>
-                      Открыть
-                    </Button>
-                    {s.mode === "queue" ? (
-                      <Button
-                        onClick={() => (primaryCta === "Начать" ? void s.pickingStart(it.id) : void s.openDetail(it.id))}
-                        disabled={ctaDisabled}
-                      >
-                        {primaryCta}
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
+                <OrderCard
+                  key={it.id}
+                  it={it}
+                  mode={s.mode}
+                  statusLabel={label}
+                  statusVariant={statusBadgeVariant(it.picking_status)}
+                  reasonLabel={reasonLabel}
+                  forcedUpdate={props.forcedUpdate}
+                  actionsDisabled={ctaDisabled}
+                  onOpen={() => void s.openDetail(it.id)}
+                  onPrimary={s.mode === "queue" ? () => (primaryCta === "Начать" ? void s.pickingStart(it.id) : void s.openDetail(it.id)) : undefined}
+                  primaryLabel={s.mode === "queue" ? primaryCta : null}
+                />
               );
             })}
           </div>
