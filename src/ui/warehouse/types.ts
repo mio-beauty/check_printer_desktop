@@ -4,6 +4,7 @@ export type OrderItem = {
   id: number;
   number: string;
   order_id: string | null;
+  created_at?: string | null;
   total: number | null;
   client_name: string | null;
   client_phone: string | null;
@@ -12,6 +13,8 @@ export type OrderItem = {
   picking_status: "TO_PICK" | "PICKING" | "PICKED" | "PARTIALLY_PICKED" | "PICK_FAILED" | string;
   active_session_id: string | null;
   progress: { picked: number; ordered: number };
+  finished_by_user_id?: number | null;
+  finished_by_display?: string | null;
   partial_reason_code?: string | null;
   partial_reason_comment?: string | null;
   started_at?: string | null;

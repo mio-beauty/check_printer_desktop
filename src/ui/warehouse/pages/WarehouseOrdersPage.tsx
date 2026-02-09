@@ -74,7 +74,7 @@ function ProgressCircle(props: { value: number; label: string }) {
   const dashoffset = circumference - (pct / 100) * circumference;
 
   return (
-    <div className="relative grid h-12 w-12 place-items-center rounded-full border bg-white">
+    <div className="relative grid h-12 w-12 place-items-center rounded-full bg-white">
       <svg viewBox="0 0 36 36" className="absolute inset-0 h-full w-full" aria-hidden="true">
         <circle cx={18} cy={18} r={r} className="fill-none stroke-muted" strokeWidth="3.5" />
         <circle
@@ -105,6 +105,7 @@ function OrderCard(props: {
   primaryLabel?: string | null;
 }) {
   const pct = percent(props.it.progress?.picked ?? 0, props.it.progress?.ordered ?? 0);
+  const statusUp = safeToUpper(props.it.picking_status);
   const createdAtRaw =
     (props.it as any).created_at ??
     (props.it as any).createdAt ??
@@ -114,6 +115,11 @@ function OrderCard(props: {
     props.it.started_at ??
     null;
   const createdAt = formatRuDateTime(createdAtRaw);
+  const finishedAt = formatRuDateTime(props.it.finished_at ?? null);
+  const showFinishedMeta = statusUp === "PICKED" && Boolean(finishedAt);
+  const finisherLabel =
+    (props.it.finished_by_display && String(props.it.finished_by_display).trim()) ||
+    (props.it.finished_by_user_id != null ? `User #${props.it.finished_by_user_id}` : null);
 
   return (
     <div
@@ -141,6 +147,12 @@ function OrderCard(props: {
             <div className="truncate text-lg font-semibold">{props.it.number ? `#${props.it.number}` : `#${props.it.id}`}</div>
           </div>
           <div className="mt-1 text-xs text-muted-foreground">Заказ создан: {createdAt ?? "—"}</div>
+          {showFinishedMeta ? (
+            <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+              <div>Заказ собран: {finishedAt}</div>
+              <div>Собирал: {finisherLabel ?? "—"}</div>
+            </div>
+          ) : null}
         </div>
 
         <div className="flex items-center gap-2">
@@ -178,19 +190,7 @@ function OrderCard(props: {
         <div className="mt-3 line-clamp-2 text-xs text-muted-foreground">Комментарий: {String(props.it.partial_reason_comment)}</div>
       ) : null}
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        {props.primaryLabel && props.onPrimary ? (
-          <Button
-            onClick={(e) => {
-              e.stopPropagation();
-              props.onPrimary?.();
-            }}
-            disabled={props.actionsDisabled}
-          >
-            {props.primaryLabel}
-          </Button>
-        ) : null}
-      </div>
+
     </div>
   );
 }
