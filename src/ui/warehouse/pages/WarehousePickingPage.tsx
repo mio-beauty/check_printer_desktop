@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import { ChevronLeft, ImageOff, Info, ScanLine } from "lucide-react";
+import { Badge, ChevronLeft, ImageOff, Info, ScanLine } from "lucide-react";
 
 import {
   AlertDialog,
@@ -174,7 +174,7 @@ function PickItemCard(props: {
         </div>
         <div className=" flex items-center gap-4 text-[16px] text-[#757575] font-medium">
           <div className="flex items-center gap-3">
-            <span>{`Собрано: ${picked}/${ordered}`}</span>
+            <span>{picked < 1 ? `Кол-во: ${ordered}` : `Собрано: ${picked}/${ordered}`}</span>
             {shouldShowDots ? <QtyDots ordered={ordered} picked={picked} /> : null}
           </div>
         </div>
@@ -219,6 +219,34 @@ export function WarehousePickingPage(props: {
     if (!canFocusScan) return;
     if (s.scanError || s.finishError) focusScanSoon();
   }, [canFocusScan, focusScanSoon, s.finishError, s.scanError]);
+
+  React.useEffect(() => {
+    if (!canFocusScan) return;
+    if (!s.scanBusy) focusScanSoon();
+  }, [canFocusScan, focusScanSoon, s.scanBusy]);
+
+  React.useEffect(() => {
+    if (!canFocusScan) return;
+
+    const onWindowFocus = () => focusScanSoon();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") focusScanSoon();
+    };
+
+    window.addEventListener("focus", onWindowFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+
+    const intervalId = window.setInterval(() => {
+      if (!canFocusScan) return;
+      if (document.activeElement !== scanInputRef.current) focusScanSoon();
+    }, 1000);
+
+    return () => {
+      window.removeEventListener("focus", onWindowFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.clearInterval(intervalId);
+    };
+  }, [canFocusScan, focusScanSoon]);
 
   React.useEffect(() => {
     if (s.selectedId === null) return;
@@ -345,11 +373,18 @@ export function WarehousePickingPage(props: {
   };
 
   return (
-    <div onPointerDownCapture={() => (lastPointerDownAtRef.current = Date.now())} className="flex h-full min-h-0 flex-col bg-white">
+    <div
+      onPointerDownCapture={() => (lastPointerDownAtRef.current = Date.now())}
+      onPointerUpCapture={() => {
+        // After any click/tap, return focus to the scanner input (unless blocked by offline/update/modals).
+        focusScanSoon();
+      }}
+      className="flex h-full min-h-0 flex-col bg-white"
+    >
       {props.chromeTabs}
 
-      <div className="flex min-h-0 flex-1 flex-col gap-6 px-6 py-5 text-black">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex min-h-0 flex-1 flex-col text-black">
+        <div className="flex flex-wrap items-center justify-between p-4">
           <div className="flex items-center gap-3">
             <div>
               <div className="text-[22px] font-bold leading-tight">{`Заказ ${orderNumber}`}</div>
@@ -371,30 +406,46 @@ export function WarehousePickingPage(props: {
           </div>
         </div>
 
-        <div className="grid gap-1">
-          <div className="relative">
-            <ScanLine className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-black/40" aria-hidden="true" />
-            <Input
-              ref={scanInputRef}
-              value={s.scanCode}
-              onChange={(e) => s.setScanCode(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === "Tab") {
-                  e.preventDefault();
-                  void s.pickingScan(s.scanCode);
-                }
-              }}
-              placeholder="Готово к сканированию"
-              disabled={readOnly || props.offline || props.forcedUpdate || s.scanBusy}
-              className="h-12 rounded-xl border-[#EDEDED] bg-white pl-12 text-base shadow-none placeholder:text-black/40 focus-visible:ring-violet-300"
-              autoFocus
-              onBlur={() => {
-                const sincePointerMs = Date.now() - lastPointerDownAtRef.current;
-                if (sincePointerMs >= 350) focusScanSoon();
-              }}
-            />
+        <div className="grid gap-1.5 px-4 py-3">
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1">
+              <ScanLine className="pointer-events-none absolute left-[12px] top-1/2 h-5 w-5 -translate-y-1/2 text-black/40" aria-hidden="true" />
+              <Input
+                ref={scanInputRef}
+                value={s.scanCode}
+                onChange={(e) => s.setScanCode(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === "Tab") {
+                    e.preventDefault();
+                    void s.pickingScan(s.scanCode);
+                  }
+                }}
+                placeholder="Готово к сканированию"
+                disabled={readOnly || props.offline || props.forcedUpdate || s.scanBusy}
+                className="h-12 rounded-lg border-[#EDEDED] bg-white pl-10 text-base shadow-none placeholder:text-[#747479] focus-visible:ring-black"
+                autoFocus
+                onBlur={() => {
+                  const sincePointerMs = Date.now() - lastPointerDownAtRef.current;
+                  if (sincePointerMs >= 350) focusScanSoon();
+                }}
+              />
+            </div>
+
+            <Button
+              type="button"
+              onClick={() => void s.pickingScan(s.scanCode)}
+              disabled={readOnly || props.offline || props.forcedUpdate || s.scanBusy || !s.scanCode.trim()}
+              className={cn(
+                "h-12 rounded-lg px-6 text-base",
+                !s.scanCode.trim() || readOnly || props.offline || props.forcedUpdate || s.scanBusy
+                  ? "bg-black/10 text-black/40 hover:bg-black/10"
+                  : "bg-black text-white hover:bg-black/90"
+              )}
+            >
+              Пробить
+            </Button>
           </div>
-          <div className="text-sm text-black/50">Отсканируйте штрихкод товара или введите код товара вручную</div>
+          <div className="text-sm leading-4 text-black/50">Отсканируйте штрихкод товара или введите код товара вручную</div>
           {s.scanError ? <div className="text-sm text-destructive">{s.scanError}</div> : null}
           {s.pendingScan ? (
             <div className="text-xs text-black/50">
@@ -408,14 +459,16 @@ export function WarehousePickingPage(props: {
           ) : null}
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
+        <div className="grid min-h-0 flex-1 grid-cols-1 p-4 gap-6 lg:grid-cols-[1fr_380px]">
           <div className="min-h-0">
-            <div className="flex items-center gap-2">
-              <div className="text-sm font-semibold">К сканированию</div>
-              <div className="text-sm text-black/40">{notScanned.length}</div>
+            <div className="flex items-center gap-2 py-3 gap-2">
+              <div className="text-[18px] font-semibold">К сканированию</div>
+              <div className="rounded-full justify-center px-1.5 py-0 bg-[#F8F8F8] text-sm text-[#757575] font-medium">
+                {notScanned.length}
+              </div>
             </div>
 
-            <div className="mt-4 min-h-0">
+            <div className="min-h-0 ">
               {itemsForUi.length > 0 && notScanned.length === 0 ? (
                 <div className="flex min-h-[360px] flex-col items-center justify-center gap-3 text-center text-black/60">
                   <div className="grid h-12 w-12 place-items-center rounded-full bg-black/[0.03]">
@@ -443,14 +496,13 @@ export function WarehousePickingPage(props: {
             </div>
           </div>
 
-          <Card className="flex min-h-0 flex-col rounded-2xl border-[#EDEDED] shadow-none">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Готово к отправке</CardTitle>
-              <CardDescription className="text-xs">Собранные позиции</CardDescription>
+          <Card className="flex min-h-0 flex-col rounded-[16px] border border-[#EDEDED] shadow-none">
+            <CardHeader className="flex gap-2 py-3 gap-2 p-4 pb-2">
+              <CardTitle className="text-[18px] font-semibold">Готово к отправке</CardTitle>
             </CardHeader>
-            <CardContent className="min-h-0 flex-1 overflow-auto pb-4">
+            <CardContent className="min-h-0 flex-1 overflow-auto p-0 gap-0">
               {scanned.length ? (
-                <div className="grid gap-2">
+                <div className="grid gap-0">
                   {scanned.map((it) => (
                     <PickItemCard key={it.id} it={it} highlight={s.highlightItemId === it.id} showRemaining={false} showDots={false} />
                   ))}
@@ -459,8 +511,8 @@ export function WarehousePickingPage(props: {
                 <div className="text-sm text-black/40">Пока нет собранных позиций.</div>
               )}
             </CardContent>
-            <div className="border-t border-[#EDEDED] p-4">
-              <div className="grid gap-2 text-sm">
+            <div className="p-0">
+              <div className="grid gap-2 p-3 text-[16px] border-t border-[#EDEDED]">
                 <div className="flex items-center justify-between">
                   <div className="text-black/50">Собрано:</div>
                   <div className="font-semibold">{collectedLabel}</div>
@@ -474,7 +526,7 @@ export function WarehousePickingPage(props: {
                 </div>
               </div>
 
-              <div className="mt-4 grid gap-2">
+              <div className="mt-4 grid gap-2 p-3 border-t border-[#EDEDED]">
                 <Button
                   className="h-11 w-full rounded-xl bg-violet-600 text-white hover:bg-violet-700"
                   onClick={handleFinish}
