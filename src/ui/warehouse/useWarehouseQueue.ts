@@ -275,8 +275,11 @@ export function useWarehouseQueue(opts: {
         const pickedQty = Number(res?.item?.picked_qty);
         if (itemId && Number.isFinite(pickedQty)) {
           setDetail((prev) => {
-            const currentItems = prev?.picking?.pick_items || prev?.picking?.items;
+            if (!prev?.picking) return prev;
+
+            const currentItems = prev.picking.pick_items ?? prev.picking.items;
             if (!currentItems) return prev;
+
             const nextItems = currentItems.map((it) => (String(it.id) === itemId ? { ...it, picked_qty: pickedQty } : it));
             const progressPicked = nextItems.reduce((sum, it) => sum + (Number(it.picked_qty) || 0), 0);
             const progressOrdered = nextItems.reduce((sum, it) => sum + (Number(it.ordered_qty) || 0), 0);
