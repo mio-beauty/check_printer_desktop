@@ -37,14 +37,24 @@ export function AppRoutes(props: AppRoutesProps) {
         <Route
           path="/login"
           element={
-            <LoginRoute
-              authed={authed}
-              online={online}
+            <Layout
+              connectionState={props.connectionState}
+              onMinimize={props.onMinimize}
+              onToggleMaximize={props.onToggleMaximize}
+              onClose={props.onClose}
+              status={props.status}
               forcedUpdate={props.forcedUpdate}
-              hint={props.warehouseHint}
-              settings={props.settings}
-              setSettings={props.setSettings}
-            />
+              showSidebar={false}
+            >
+              <LoginRoute
+                authed={authed}
+                online={online}
+                forcedUpdate={props.forcedUpdate}
+                hint={props.warehouseHint}
+                settings={props.settings}
+                setSettings={props.setSettings}
+              />
+            </Layout>
           }
         />
         <Route element={<RequireAuth authed={authed} />}>

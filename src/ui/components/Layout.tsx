@@ -12,6 +12,7 @@ type LayoutProps = {
   onClose: () => void;
   status: PrinterStatus | null;
   forcedUpdate: boolean;
+  showSidebar?: boolean;
   children: React.ReactNode;
 };
 
@@ -22,6 +23,7 @@ export function Layout({
   onClose,
   status,
   forcedUpdate,
+  showSidebar = true,
   children,
 }: LayoutProps) {
   void status;
@@ -43,11 +45,13 @@ export function Layout({
         onToggleMaximize={onToggleMaximize}
         onClose={onClose}
         sidebar={
-          <AppSidebar
-            warehouseName={status?.warehouse?.name ?? null}
-            warehousePhone={status?.warehouseAuth?.phone ?? null}
-            onLogout={handleLogout}
-          />
+          showSidebar ? (
+            <AppSidebar
+              warehouseName={status?.warehouse?.name ?? null}
+              warehousePhone={status?.warehouseAuth?.phone ?? null}
+              onLogout={handleLogout}
+            />
+          ) : undefined
         }
       >
         {children}
