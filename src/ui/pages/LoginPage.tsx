@@ -9,6 +9,7 @@ import type { Settings } from "../types";
 export function LoginPage(props: {
   online: boolean;
   forcedUpdate: boolean;
+  hint?: string | null;
   settings: Settings | null;
   setSettings: React.Dispatch<React.SetStateAction<Settings | null>>;
 }) {
@@ -67,6 +68,7 @@ export function LoginPage(props: {
         </CardHeader>
         <CardContent className="space-y-4">
           {props.forcedUpdate && <Badge variant="destructive">Требуется обновление — вход заблокирован</Badge>}
+          {props.hint ? <Badge variant="secondary">{props.hint}</Badge> : null}
 
           <div className="grid gap-2">
             <Label>Backend URL</Label>

@@ -9,6 +9,7 @@ export default function App() {
   const [settings, setSettings] = React.useState<Settings | null>(null);
   const [logs, setLogs] = React.useState<LogEntry[]>([]);
   const [update, setUpdate] = React.useState<UpdateState>({ kind: "idle" });
+  const [warehouseHint, setWarehouseHint] = React.useState<string | null>(null);
   const forcedUpdate = Boolean(status?.update?.forced || (update.kind === "available" && update.forced));
   const connectionState = React.useMemo<ConnectionState>(() => {
     if (status?.joinError) {
@@ -55,6 +56,7 @@ export default function App() {
   React.useEffect(() => {
     let off = () => { };
     let offLog = () => { };
+    let offHint = () => { };
     (async () => {
       const s = await window.checkPrinter?.getStatus();
       if (s) setStatus(s);
@@ -66,10 +68,19 @@ export default function App() {
       const initialLogs = (await window.checkPrinter?.getLogs?.()) || [];
       setLogs(initialLogs.slice(-200));
       offLog = window.checkPrinter?.onLog?.((e) => setLogs((prev) => [...prev, e].slice(-200))) ?? (() => { });
+
+      offHint =
+        window.checkPrinter?.onWarehouseHint?.((e) => {
+          if (!e?.reason) return;
+          if (e.reason === "auth_expired") {
+            setWarehouseHint("Сессия истекла. Войдите заново.");
+          }
+        }) ?? (() => { });
     })();
     return () => {
       off();
       offLog();
+      offHint();
     };
   }, []);
 
@@ -171,6 +182,7 @@ export default function App() {
       logs={logs}
       update={update}
       setUpdate={setUpdate}
+      warehouseHint={warehouseHint}
       onTestPrint={testPrint}
       onCheckUpdates={checkUpdates}
       onStartUpdate={startUpdate}

@@ -95,7 +95,7 @@ export function AppSidebar({
                         },
                         {
                             name: "Статус",
-                            url: "/",
+                            url: "/status",
                             icon: PieChart,
                         },
                     ]}

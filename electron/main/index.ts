@@ -306,7 +306,7 @@ function sendStatus() {
     },
     warehouseAuth: {
       phone: s.warehouseAuth?.phone || null,
-      hasToken: Boolean(s.warehouseAuth?.accessToken),
+      hasToken: Boolean(s.warehouseAuth?.accessToken || s.warehouseAuth?.refreshToken),
     },
     window: {
       maximized: windowIsMaximized,
@@ -444,37 +444,67 @@ async function ensureDeviceAccessToken(opts: { force?: boolean } = {}): Promise<
   return access;
 }
 
+async function ensureWarehouseAccessToken(opts: { force?: boolean } = {}): Promise<string | null> {
+  const auth = warehouseAuth();
+  const refresh = auth.refreshToken;
+  if (!refresh) return auth.accessToken || null;
+
+  const expMs = jwtExpMs(auth.accessToken);
+  const stillValid = expMs && expMs - Date.now() > 60_000;
+  if (!opts.force && auth.accessToken && stillValid) return auth.accessToken;
+
+  const refreshed = await apiFetchJson("/api/auth/refresh", {
+    method: "POST",
+    json: { refresh_token: refresh },
+    timeoutMs: 8000,
+  });
+  if (!refreshed.ok) {
+    const msg = refreshed.json?.message || refreshed.json?.error || refreshed.json?.raw || `warehouse refresh failed (${refreshed.status})`;
+    throw new Error(String(msg));
+  }
+  const access2 = refreshed.json?.access_token ? String(refreshed.json.access_token) : "";
+  const refresh2 = refreshed.json?.refresh_token ? String(refreshed.json.refresh_token) : "";
+  if (!access2 || !refresh2) throw new Error("warehouse refresh: tokens missing");
+  saveWarehouseAuth({ accessToken: access2, refreshToken: refresh2 });
+  sendStatus();
+  return access2;
+}
+
 async function warehouseRequestJson(
   path: string,
   opts: { method?: string; json?: any; timeoutMs?: number } = {},
 ): Promise<{ ok: boolean; status: number; json: any }> {
-  const auth = warehouseAuth();
   const headers: Record<string, string> = {};
-  if (auth.accessToken) headers.authorization = `Bearer ${auth.accessToken}`;
+  try {
+    const access = await ensureWarehouseAccessToken();
+    if (access) headers.authorization = `Bearer ${access}`;
+  } catch (e) {
+    // Session is not refreshable -> force re-login.
+    saveWarehouseAuth({ accessToken: null, refreshToken: null });
+    sendWarehouseHint("auth_expired");
+    sendStatus();
+    throw new Error("Сессия истекла. Войдите заново.");
+  }
 
   let res = await apiFetchJson(path, { method: opts.method, json: opts.json, timeoutMs: opts.timeoutMs, headers });
   if (res.status !== 401) return res;
 
   // try refresh once
-  if (!auth.refreshToken) return res;
   try {
-    const refreshed = await apiFetchJson("/api/auth/refresh", {
-      method: "POST",
-      json: { refresh_token: auth.refreshToken },
-      timeoutMs: 8000,
+    const access = await ensureWarehouseAccessToken({ force: true });
+    if (!access) return res;
+    res = await apiFetchJson(path, {
+      method: opts.method,
+      json: opts.json,
+      timeoutMs: opts.timeoutMs,
+      headers: { authorization: `Bearer ${access}` },
     });
-    if (!refreshed.ok || !refreshed.json?.access_token || !refreshed.json?.refresh_token) return res;
-    saveWarehouseAuth({
-      accessToken: String(refreshed.json.access_token),
-      refreshToken: String(refreshed.json.refresh_token),
-    });
-    const auth2 = warehouseAuth();
-    const headers2: Record<string, string> = { authorization: `Bearer ${auth2.accessToken}` };
-    res = await apiFetchJson(path, { method: opts.method, json: opts.json, timeoutMs: opts.timeoutMs, headers: headers2 });
+    return res;
+  } catch (e) {
+    saveWarehouseAuth({ accessToken: null, refreshToken: null });
+    sendWarehouseHint("auth_expired");
     sendStatus();
-    return res;
-  } catch {
-    return res;
+    throw new Error("Сессия истекла. Войдите заново.");
   }
 }
 

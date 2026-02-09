@@ -16,6 +16,7 @@ type AppRoutesProps = {
   logs: LogEntry[];
   update: UpdateState;
   setUpdate: React.Dispatch<React.SetStateAction<UpdateState>>;
+  warehouseHint?: string | null;
   onTestPrint: () => Promise<void>;
   onCheckUpdates: () => Promise<void>;
   onStartUpdate: () => Promise<void>;
@@ -28,6 +29,7 @@ type AppRoutesProps = {
 export function AppRoutes(props: AppRoutesProps) {
   const authed = Boolean(props.status?.warehouseAuth?.hasToken);
   const online = Boolean(props.status?.connected && props.status?.joined);
+  const defaultAuthedPath = "/warehouse";
 
   return (
     <HashRouter>
@@ -39,6 +41,7 @@ export function AppRoutes(props: AppRoutesProps) {
               authed={authed}
               online={online}
               forcedUpdate={props.forcedUpdate}
+              hint={props.warehouseHint}
               settings={props.settings}
               setSettings={props.setSettings}
             />
@@ -61,6 +64,10 @@ export function AppRoutes(props: AppRoutesProps) {
           >
             <Route
               index
+              element={<Navigate to={defaultAuthedPath} replace />}
+            />
+            <Route
+              path="status"
               element={
                 <StatusPage
                   status={props.status}
@@ -88,10 +95,10 @@ export function AppRoutes(props: AppRoutesProps) {
                 />
               }
             />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<Navigate to={defaultAuthedPath} replace />} />
           </Route>
         </Route>
-        <Route path="*" element={<Navigate to={authed ? "/" : "/login"} replace />} />
+        <Route path="*" element={<Navigate to={authed ? defaultAuthedPath : "/login"} replace />} />
       </Routes>
     </HashRouter>
   );
@@ -101,16 +108,18 @@ function LoginRoute(props: {
   authed: boolean;
   online: boolean;
   forcedUpdate: boolean;
+  hint?: string | null;
   settings: Settings | null;
   setSettings: React.Dispatch<React.SetStateAction<Settings | null>>;
 }) {
   if (props.authed) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/warehouse" replace />;
   }
   return (
     <LoginPage
       online={props.online}
       forcedUpdate={props.forcedUpdate}
+      hint={props.hint}
       settings={props.settings}
       setSettings={props.setSettings}
     />
