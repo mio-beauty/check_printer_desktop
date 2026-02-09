@@ -111,6 +111,15 @@ function QtyDots(props: { ordered: number; picked: number }) {
   );
 }
 
+function NoScansEmptyState() {
+  return (
+    <div className="flex min-h-[360px] h-full flex-col items-center justify-center gap-3 px-6 text-center text-[#757575] px-12">
+      <BoxCheckIcon className="h-8 w-8 text-[#757575]" />
+      <div className="text-[16px] leading-tight">Ещё не отсканировано ни одного продукта</div>
+    </div>
+  );
+}
+
 function isTesterByFolder(input: unknown): boolean {
   const s = String(input ?? "").toLowerCase();
   if (!s) return false;
@@ -216,7 +225,7 @@ function ReadyItemRow(props: {
   return (
     <div
       className={cn(
-        "flex items-center gap-3 border-b border-[#EDEDED] px-4 py-3",
+        "flex items-top gap-3 border-b border-[#EDEDED] px-4 py-3",
         props.highlight ? "bg-violet-50/40" : "bg-white"
       )}
     >
@@ -580,10 +589,10 @@ export function WarehousePickingPage(props: {
               </div>
             </div>
 
-            <div className="min-h-0 ">
+            <div className="min-h-0 h-full">
               {itemsForUi.length > 0 && notScanned.length === 0 ? (
-                <div className="flex min-h-[360px] flex-col items-center justify-center gap-3 text-center text-black/60">
-                  <div className="grid h-12 w-12 place-items-center rounded-full bg-black/[0.03]">
+                <div className="flex min-h-[360px] h-full flex-col items-center justify-center gap-3 text-center text-black/60">
+                  <div className="grid h-10 w-10 place-items-center rounded-full">
                     <BoxCheckIcon className="h-6 w-6 text-black/60" />
                   </div>
                   <div className="text-sm font-medium">В сборке не осталось товаров</div>
@@ -613,10 +622,12 @@ export function WarehousePickingPage(props: {
               <CardTitle className="text-[18px] font-semibold">Готово к отправке</CardTitle>
             </CardHeader>
             <CardContent className="min-h-0 flex-1 overflow-auto p-0 gap-0">
-              <div className="grid gap-0">
-                {scanned.map((it) => (
-                  <ReadyItemRow key={it.id} it={it} highlight={s.highlightItemId === it.id} />
-                ))}
+              <div className="grid gap-0 h-full">
+                {itemsForUi.length > 0 && scanned.length === 0 ? (
+                  <NoScansEmptyState />
+                ) : (
+                  scanned.map((it) => <ReadyItemRow key={it.id} it={it} highlight={s.highlightItemId === it.id} />)
+                )}
               </div>
             </CardContent>
             <div className="p-0">
@@ -642,9 +653,6 @@ export function WarehousePickingPage(props: {
                 >
                   Завершить сборку
                 </Button>
-                {!sessionActive && !readOnly ? (
-                  <div className="text-xs text-black/40">Сборка начнётся автоматически при первом сканировании.</div>
-                ) : null}
               </div>
               {s.finishError ? <div className="mt-2 text-sm text-destructive">{s.finishError}</div> : null}
             </div>
