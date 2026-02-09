@@ -119,8 +119,17 @@ function isTesterByFolder(input: unknown): boolean {
 
 function TesterBadge() {
   return (
-    <div className="inline-flex items-center gap-1.5 rounded-lg bg-violet-50 px-2 py-1 text-sm font-semibold text-violet-600">
+    <div className="inline-flex items-center gap-1 rounded-lg bg-violet-50 px-2 py-1 text-[15px] leading-tight font-medium text-violet-600">
       <Info className="h-4 w-4" aria-hidden="true" />
+      <span>Tester</span>
+    </div>
+  );
+}
+
+function TesterBadgeMuted() {
+  return (
+    <div className="inline-flex items-center gap-1 rounded-[6px] bg-violet-50 px-1.5 py-0.5 text-[12px] leading-tight font-medium text-violet-600">
+      <Info className="h-3 w-3" aria-hidden="true" />
       <span>Tester</span>
     </div>
   );
@@ -137,6 +146,7 @@ function PickItemCard(props: {
     name: string;
     ordered_qty: number;
     picked_qty: number;
+    sku?: string | null;
     main_image_mini_url?: string | null;
     is_tester?: boolean;
   };
@@ -147,6 +157,7 @@ function PickItemCard(props: {
   const picked = Math.max(0, Math.floor(Number(props.it.picked_qty) || 0));
   const ordered = Math.max(0, Math.floor(Number(props.it.ordered_qty) || 0));
   const remaining = Math.max(0, ordered - picked);
+  const sku = props.it.sku ? String(props.it.sku) : null;
   const shouldShowRemainingBadge = props.showRemaining && ordered > 1 && picked >= 1 && picked < ordered;
   const shouldShowDots = props.showDots && ordered > 1 && picked < ordered;
 
@@ -174,9 +185,51 @@ function PickItemCard(props: {
         </div>
         <div className=" flex items-center gap-4 text-[16px] text-[#757575] font-medium">
           <div className="flex items-center gap-3">
-            <span>{picked < 1 ? `Кол-во: ${ordered}` : `Собрано: ${picked}/${ordered}`}</span>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span>{picked < 1 ? `Кол-во: ${ordered}` : `Собрано: ${picked}/${ordered}`}</span>
+              {sku ? <span className="text-[14px] font-semibold text-black/60">{`SKU: ${sku}`}</span> : null}
+            </div>
             {shouldShowDots ? <QtyDots ordered={ordered} picked={picked} /> : null}
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReadyItemRow(props: {
+  it: {
+    id: string;
+    name: string;
+    ordered_qty: number;
+    picked_qty: number;
+    sku?: string | null;
+    main_image_mini_url?: string | null;
+    is_tester?: boolean;
+  };
+  highlight: boolean;
+  testerBadge?: React.ReactNode;
+}) {
+  const ordered = Math.max(0, Math.floor(Number(props.it.ordered_qty) || 0));
+  const sku = props.it.sku ? String(props.it.sku) : null;
+
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-3 border-b border-[#EDEDED] px-4 py-3",
+        props.highlight ? "bg-violet-50/40" : "bg-white"
+      )}
+    >
+      <PickItemThumb url={props.it.main_image_mini_url} alt={props.it.name} className="h-11 w-11 rounded-md border-[#EDEDED]" />
+
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="truncate text-[14px] font-semibold leading-tight text-[#0B0B0B]">{props.it.name}</div>
+          {props.it.is_tester ? (props.testerBadge ?? <TesterBadgeMuted />) : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] font-medium leading-tight text-[#757575]">
+          <span>{`Кол-во: ${ordered} шт`}</span>
+          {sku ? <span className="font-semibold text-black/60">{`SKU: ${sku}`}</span> : null}
         </div>
       </div>
     </div>
@@ -259,9 +312,12 @@ export function WarehousePickingPage(props: {
   const pickingItems = s.detail?.picking?.pick_items || s.detail?.picking?.items || [];
 
   const orderItems = (s.detail?.order?.order_items as any[] | undefined) || [];
+  const orderDataItems = ((s.detail?.order as any)?.order_data?.items as any[] | undefined) || [];
+  const catalogSourceItems = React.useMemo(() => [...orderItems, ...orderDataItems], [orderDataItems, orderItems]);
+
   const groupByAssortmentId = React.useMemo(() => {
     const map = new Map<string, { name?: string | null; path?: string | null }>();
-    for (const it of orderItems) {
+    for (const it of catalogSourceItems) {
       if (!it || typeof it !== "object") continue;
       const msId = it.ms_assortment_id ? String(it.ms_assortment_id) : "";
       if (!msId) continue;
@@ -271,10 +327,10 @@ export function WarehousePickingPage(props: {
       if (name || path) map.set(msId, { name, path });
     }
     return map;
-  }, [orderItems]);
+  }, [catalogSourceItems]);
   const unitPriceByAssortmentId = React.useMemo(() => {
     const map = new Map<string, number>();
-    for (const it of orderItems) {
+    for (const it of catalogSourceItems) {
       if (!it || typeof it !== "object") continue;
       const msId = it.ms_assortment_id ? String(it.ms_assortment_id) : "";
       if (!msId) continue;
@@ -290,12 +346,28 @@ export function WarehousePickingPage(props: {
       if (unit !== null && Number.isFinite(unit)) map.set(msId, unit);
     }
     return map;
-  }, [orderItems]);
-  const previewItems = orderItems
+  }, [catalogSourceItems]);
+
+  const skuByAssortmentId = React.useMemo(() => {
+    const map = new Map<string, string>();
+    for (const it of catalogSourceItems) {
+      if (!it || typeof it !== "object") continue;
+      const msId = it.ms_assortment_id ? String(it.ms_assortment_id) : "";
+      if (!msId) continue;
+      const sku = (it as any).sku ? String((it as any).sku) : "";
+      if (!sku) continue;
+      map.set(msId, sku);
+    }
+    return map;
+  }, [catalogSourceItems]);
+
+  const previewSource = orderDataItems.length ? orderDataItems : orderItems;
+  const previewItems = previewSource
     .filter((it) => it && typeof it === "object")
     .map((it, idx) => ({
       id: `order_item_${idx}`,
       name: String(it.name || "Товар"),
+      sku: (it as any).sku ? String((it as any).sku) : null,
       ordered_qty: Number(it.qty) || 0,
       picked_qty: 0,
       main_image_mini_url: (it.main_image_mini_url ? String(it.main_image_mini_url) : null) as string | null,
@@ -311,6 +383,12 @@ export function WarehousePickingPage(props: {
     picked_qty: Number(it.picked_qty ?? 0),
     main_image_mini_url: (it as any).main_image_mini_url ? String((it as any).main_image_mini_url) : null,
     ms_assortment_id: (it as any).ms_assortment_id ? String((it as any).ms_assortment_id) : null,
+    sku: (() => {
+      const raw = (it as any).sku ? String((it as any).sku) : "";
+      if (raw) return raw;
+      const msId = (it as any).ms_assortment_id ? String((it as any).ms_assortment_id) : "";
+      return msId ? skuByAssortmentId.get(msId) ?? null : null;
+    })(),
     is_tester: (() => {
       const groupName = (it as any).group_name ?? (it as any).group?.name ?? null;
       const groupPath = (it as any).group_path ?? (it as any).group?.path ?? null;
@@ -501,15 +579,11 @@ export function WarehousePickingPage(props: {
               <CardTitle className="text-[18px] font-semibold">Готово к отправке</CardTitle>
             </CardHeader>
             <CardContent className="min-h-0 flex-1 overflow-auto p-0 gap-0">
-              {scanned.length ? (
-                <div className="grid gap-0">
-                  {scanned.map((it) => (
-                    <PickItemCard key={it.id} it={it} highlight={s.highlightItemId === it.id} showRemaining={false} showDots={false} />
-                  ))}
-                </div>
-              ) : (
-                <div className="text-sm text-black/40">Пока нет собранных позиций.</div>
-              )}
+              <div className="grid gap-0">
+                {scanned.map((it) => (
+                  <ReadyItemRow key={it.id} it={it} highlight={s.highlightItemId === it.id} />
+                ))}
+              </div>
             </CardContent>
             <div className="p-0">
               <div className="grid gap-2 p-3 text-[16px] border-t border-[#EDEDED]">
@@ -600,6 +674,6 @@ export function WarehousePickingPage(props: {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </div >
   );
 }
