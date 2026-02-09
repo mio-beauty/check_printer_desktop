@@ -1,5 +1,7 @@
 import * as React from "react";
 
+import { CheckCircle2, Clock, Search, TriangleAlert } from "lucide-react";
+
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card";
@@ -7,6 +9,31 @@ import { Input } from "../../../components/ui/input";
 
 import { formatSum, statusBadgeVariant, statusLabel } from "../ui";
 import type { WarehouseQueueState } from "../useWarehouseQueue";
+import { cn } from "../../../lib/utils";
+
+function StatusFilterChip(props: {
+  active: boolean;
+  label: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={props.onClick}
+      disabled={props.disabled}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ",
+        props.active ? "bg-violet-100 text-violet-700" : "text-[#747479] hover:bg-black/5 hover:text-black",
+        props.disabled && "",
+      )}
+    >
+      <span>{props.icon}</span>
+      {props.label}
+    </button>
+  );
+}
 
 export function WarehouseOrdersPage(props: {
   s: WarehouseQueueState;
@@ -19,136 +46,110 @@ export function WarehouseOrdersPage(props: {
   partialReasons: Array<{ code: string; label: string }>;
 }) {
   const s = props.s;
+
+  const headerTitle = s.mode === "problems" ? "Проблемы" : "Очередь заказов";
+  const searchPlaceholder =
+    s.mode === "problems" ? "Поиск по номеру, ID, телефону, коду" : "Поиск по номеру, ID, телефону";
+
   return (
     <div className="space-y-4">
       {props.chromeTabs}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant={props.offline ? "destructive" : "default"}>{props.offline ? "Оффлайн" : "Онлайн"}</Badge>
-          {props.offline && props.offlineReason ? (
-            <span className="text-xs text-muted-foreground">Причина: {props.offlineReason}</span>
-          ) : null}
-          {props.forcedUpdate && <Badge variant="destructive">Требуется обновление — действия заблокированы</Badge>}
-          <Badge variant="secondary">{props.authPhone || "—"}</Badge>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant={s.mode === "queue" ? "default" : "outline"}
-            onClick={() => {
-              s.setMode("queue");
-              s.setStatusFilter("");
-            }}
-            disabled={s.loading}
-          >
-            Очередь
-          </Button>
-          <Button
-            variant={s.mode === "problems" ? "default" : "outline"}
-            onClick={() => {
-              s.setMode("problems");
-              s.setStatusFilter("");
-            }}
-            disabled={s.loading}
-          >
-            Проблемы
-          </Button>
-          <Button variant="outline" onClick={() => void s.refresh("manual")} disabled={!s.hasToken || s.loading}>
-            Обновить
-          </Button>
-          <Button variant="outline" onClick={s.onLogout}>
-            Выйти
-          </Button>
-        </div>
-      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{s.mode === "problems" ? "Проблемы" : "Очередь склада"}</CardTitle>
-          <CardDescription>
-            {s.mode === "problems"
-              ? "PARTIALLY_PICKED и PICK_FAILED. Можно открыть заказ и посмотреть причину и аудит."
-              : "Список заказов для сборки. Поиск и фильтры."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="sm:col-span-2">
+      <div className="overflow-hidden ">
+        <div className="bg-white px-4 py-4 text-black">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <h1 className="text-[24px] font-semibold tracking-tight">{headerTitle}</h1>
+          </div>
+        </div>
+
+        <div className="h-px bg-black/10" />
+
+        <div className="bg-white px-4 py-4 text-black">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+            <div className="relative w-full max-w-[560px]">
+              <Search
+                className="pointer-events-none absolute left-2 top-1/2 h-[20px] w-[20px] -translate-y-1/2 text-[#747479]"
+                color="#747479"
+              />
               <Input
                 value={s.q}
                 onChange={(e) => s.setQ(e.target.value)}
-                placeholder={s.mode === "problems" ? "Поиск: номер / order_id / телефон / код" : "Поиск: номер / order_id / телефон"}
+                placeholder={searchPlaceholder}
+                className="rounded-lg bg-white pl-9 text-black placeholder:text-[#747479]"
               />
             </div>
-            <div className="flex items-center justify-end gap-2">
-              <Button variant={s.statusFilter === "" ? "default" : "outline"} onClick={() => s.setStatusFilter("")}>
-                Все
-              </Button>
-              {s.mode === "problems" ? (
+
+            <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+              {s.mode === "queue" ? (
                 <>
-                  <Button
-                    variant={s.statusFilter === "PARTIALLY_PICKED" ? "default" : "outline"}
-                    onClick={() => s.setStatusFilter("PARTIALLY_PICKED")}
-                  >
-                    Частично
-                  </Button>
-                  <Button
-                    variant={s.statusFilter === "PICK_FAILED" ? "default" : "outline"}
-                    onClick={() => s.setStatusFilter("PICK_FAILED")}
-                  >
-                    Ошибка
-                  </Button>
+                  <StatusFilterChip
+                    active={s.statusFilter === "TO_PICK"}
+                    label="К сборке"
+                    icon={<CheckCircle2 className="h-4 w-4" />}
+                    onClick={() => s.setStatusFilter("TO_PICK")}
+                    disabled={s.loading}
+                  />
+                  <StatusFilterChip
+                    active={s.statusFilter === "PICKING"}
+                    label="Собирается"
+                    icon={<Clock className="h-4 w-4" />}
+                    onClick={() => s.setStatusFilter("PICKING")}
+                    disabled={s.loading}
+                  />
+                  <StatusFilterChip
+                    active={s.statusFilter === "PICKED"}
+                    label="Собрано"
+                    icon={<CheckCircle2 className="h-4 w-4" />}
+                    onClick={() => s.setStatusFilter("PICKED")}
+                    disabled={s.loading}
+                  />
                 </>
               ) : (
                 <>
-                  <Button
-                    variant={s.statusFilter === "TO_PICK" ? "default" : "outline"}
-                    onClick={() => s.setStatusFilter("TO_PICK")}
-                  >
-                    К сборке
-                  </Button>
-                  <Button
-                    variant={s.statusFilter === "PICKING" ? "default" : "outline"}
-                    onClick={() => s.setStatusFilter("PICKING")}
-                  >
-                    В сборке
-                  </Button>
+                  <StatusFilterChip
+                    active={s.statusFilter === "PARTIALLY_PICKED"}
+                    label="Частично"
+                    icon={<Clock className="h-5 w-5" />}
+                    onClick={() => s.setStatusFilter("PARTIALLY_PICKED")}
+                    disabled={s.loading}
+                  />
+                  <StatusFilterChip
+                    active={s.statusFilter === "PICK_FAILED"}
+                    label="Ошибка"
+                    icon={<TriangleAlert className="h-5 w-5" />}
+                    onClick={() => s.setStatusFilter("PICK_FAILED")}
+                    disabled={s.loading}
+                  />
                 </>
               )}
+
+              <button
+                type="button"
+                onClick={() => s.setStatusFilter("")}
+                disabled={s.loading || s.statusFilter === ""}
+                className={cn(
+                  "ml-2 rounded-xl px-4 py-2 text-sm font-semibold text-[#C4C4CC] transition-colors hover:bg-white/10 hover:text-black",
+                  (s.loading || s.statusFilter === "") && "text-[#C4C4CC] hover:bg-transparent hover:text-[#C4C4CC]",
+                )}
+              >
+                Сбросить
+              </button>
             </div>
           </div>
+        </div>
+      </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {s.mode === "queue" ? (
-              <>
-                <Button variant={s.statusFilter === "PICKED" ? "default" : "outline"} onClick={() => s.setStatusFilter("PICKED")}>
-                  Собран
-                </Button>
-                <Button
-                  variant={s.statusFilter === "PARTIALLY_PICKED" ? "default" : "outline"}
-                  onClick={() => s.setStatusFilter("PARTIALLY_PICKED")}
-                >
-                  Частично
-                </Button>
-              </>
-            ) : null}
-            <div className="ml-auto flex items-center gap-2">
-              <Button
-                variant="outline"
-                onClick={() => s.setOffset(Math.max(0, s.offset - s.limit))}
-                disabled={s.offset === 0 || s.loading}
-              >
-                ←
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => s.setOffset(s.offset + s.limit)}
-                disabled={s.loading || (s.data?.items?.length ?? 0) < s.limit}
-              >
-                →
-              </Button>
-            </div>
-          </div>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>{s.mode === "problems" ? "Проблемные заказы" : "Список"}</CardTitle>
+          <CardDescription>
+            {s.mode === "problems"
+              ? "PARTIALLY_PICKED и PICK_FAILED. Можно открыть заказ и посмотреть причину и аудит."
+              : "Заказы для сборки. Клик по заказу открывает экран сборки."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
           {s.error && <Badge variant="destructive">{s.error}</Badge>}
 
           <div className="space-y-2">
