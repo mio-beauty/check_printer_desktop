@@ -260,14 +260,18 @@ export function WarehousePickingPage(props: {
   const sessionActive = Boolean(s.selectedId !== null && s.detail?.picking?.is_active);
   const readOnly = s.mode === "problems";
 
-  const printStatus = s.detail?.order?.print_status ?? (s.detail?.order?.printed === 1 ? "printed" : "not_printed");
+  const printStatus = s.detail?.order
+    ? s.detail.order.print_status ?? (s.detail.order.printed === 1 ? "printed" : "not_printed")
+    : null;
   const printError = s.detail?.order?.print_error ?? null;
   const printUi =
     printStatus === "printed"
-      ? { label: "Напечатан", className: "border-emerald-200 bg-emerald-50 text-emerald-700" }
+      ? { label: "?????????", className: "border-emerald-200 bg-emerald-50 text-emerald-700" }
       : printStatus === "print_failed"
-        ? { label: "Ошибка печати", className: "border-red-200 bg-red-50 text-red-700" }
-        : { label: "Не напечатан", className: "border-orange-200 bg-orange-50 text-orange-700" };
+        ? { label: "?????? ??????", className: "border-red-200 bg-red-50 text-red-700" }
+        : printStatus === "not_printed"
+          ? { label: "?? ?????????", className: "border-orange-200 bg-orange-50 text-orange-700" }
+          : null;
 
   const canFocusScan =
     s.selectedId !== null &&
@@ -503,12 +507,22 @@ export function WarehousePickingPage(props: {
               <span>{`Прогресс: ${Math.round(overallPct)}%`}</span>
               <ProgressRing value={overallPct} className="h-6 w-6" />
             </div>
-            <div
-              className={cn("inline-flex items-center gap-2 rounded-lg border px-3 py-1 text-sm font-semibold", printUi.className)}
-              title={printError || undefined}
-            >
-              <span>{printUi.label}</span>
-            </div>
+
+            {printUi ? (
+              <div
+                className={cn(
+                  "inline-flex items-center gap-2 rounded-lg border px-3 py-1 text-sm font-semibold",
+                  printUi.className,
+                )}
+                title={printError || undefined}
+              >
+                <span>{printUi.label}</span>
+              </div>
+            ) : (
+              <div className="inline-flex items-center gap-2 rounded-lg border border-[#EDEDED] bg-white px-3 py-1">
+                <Skeleton className="h-5 w-24" />
+              </div>
+            )}
 
             {printStatus === "print_failed" ? (
               <Button
