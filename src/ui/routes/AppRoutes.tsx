@@ -5,6 +5,7 @@ import { Layout } from "../components/Layout";
 import { WarehousePage } from "../pages/WarehousePage";
 import { StatusPage } from "../pages/StatusPage";
 import { LoginPage } from "../pages/LoginPage";
+import { ForcedUpdatePage } from "../pages/ForcedUpdatePage";
 import type { Settings, UpdateState, LogEntry, PrinterStatus } from "../types";
 
 type AppRoutesProps = {
@@ -34,6 +35,34 @@ export function AppRoutes(props: AppRoutesProps) {
   return (
     <HashRouter>
       <Routes>
+        <Route
+          path="/force-update"
+          element={
+            <Layout
+              connectionState={props.connectionState}
+              onMinimize={props.onMinimize}
+              onToggleMaximize={props.onToggleMaximize}
+              onClose={props.onClose}
+              status={props.status}
+              forcedUpdate={true}
+              update={props.update}
+              onStartUpdate={props.onStartUpdate}
+              showSidebar={false}
+            >
+              <ForcedUpdatePage
+                currentVersion={props.status?.appVersion ?? "—"}
+                minSupportedVersion={null}
+                message={props.update.kind === "available" ? props.update.message : "Обновление обязательно."}
+                downloading={props.update.kind === "downloading"}
+                progress={props.update.kind === "downloading" ? props.update.progress ?? null : null}
+                error={props.update.kind === "error" ? props.update.message : null}
+                onUpdate={props.onStartUpdate}
+              />
+            </Layout>
+          }
+        />
+
+        <Route element={<RequireNoForceUpdate forcedUpdate={props.forcedUpdate} />}>
         <Route
           path="/login"
           element={
@@ -113,9 +142,18 @@ export function AppRoutes(props: AppRoutesProps) {
           </Route>
         </Route>
         <Route path="*" element={<Navigate to={authed ? defaultAuthedPath : "/login"} replace />} />
+        </Route>
       </Routes>
     </HashRouter>
   );
+}
+
+function RequireNoForceUpdate({ forcedUpdate }: { forcedUpdate: boolean }) {
+  const location = useLocation();
+  if (forcedUpdate && location.pathname !== "/force-update") {
+    return <Navigate to="/force-update" replace />;
+  }
+  return <Outlet />;
 }
 
 function LoginRoute(props: {
