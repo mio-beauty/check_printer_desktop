@@ -32,7 +32,7 @@ export function StatusPage(props: {
         host: "",
         port: 9100,
         encoding: "cp866",
-        name: "CheckPrinterClient",
+        name: "Mio beauty Склад принтер",
       }
     );
   }, []);

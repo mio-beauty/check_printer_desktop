@@ -61,7 +61,7 @@ export function TitleBar({
             </clipPath>
           </defs>
         </svg>
-        <span className="text-[13px] text-[#131314] font-medium">Склад принтер</span>
+        <span className="text-[13px] text-[#131314] font-medium">Mio beauty Склад принтер</span>
         {appVersion && (
           <p className="text-[11px] flex items-center text-muted-foreground h-[18px] px-1.5 bg-[#F6F6F7] text-[#747479] rounded-[6px] font-medium leading-[120%]">
             v{appVersion}

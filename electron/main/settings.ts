@@ -45,7 +45,7 @@ function defaultSettings(): Settings {
   const port = Number.isFinite(portParsed) && portParsed > 0 ? portParsed : 9100;
 
   const encoding = (process.env.PRINTER_ENCODING || "cp866").trim() || "cp866";
-  const name = (process.env.PRINTER_NAME || "").trim() || "CheckPrinterClient";
+  const name = (process.env.PRINTER_NAME || "").trim() || "Mio beauty Склад принтер";
   const warehouseName = (process.env.WAREHOUSE_NAME || "").trim() || "Sklad";
 
   return {

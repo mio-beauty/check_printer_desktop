@@ -64,10 +64,11 @@
   },
   "build": {
     "appId": "uz.miobeauty.check_printer_client",
-    "productName": "CheckPrinterClient",
+    "productName": "Mio beauty Склад принтер",
     "artifactName": "CheckPrinterClient-Setup.${ext}",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "dist/**",
@@ -82,6 +83,7 @@
       }
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -95,6 +97,9 @@
       "oneClick": false,
       "perMachine": false,
       "allowElevation": false,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
       "allowToChangeInstallationDirectory": true
     }
   }
