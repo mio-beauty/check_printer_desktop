@@ -435,7 +435,15 @@ export function WarehousePickingPage(props: {
   const collectedLabel =
     totalPositions === 0 ? "—" : positionsDone >= totalPositions ? `Все ${totalPositions} позиций` : `${positionsDone} из ${totalPositions} позиций`;
 
-  const orderNumber = s.detail?.order?.number ? `#${s.detail.order.number}` : `#${s.selectedId}`;
+  const cachedOrderNumber =
+    s.selectedId !== null
+      ? s.data?.items?.find((it) => it.id === s.selectedId)?.number ??
+      s.pickingTabs?.items?.find((it) => it.id === s.selectedId)?.number ??
+      null
+      : null;
+
+  const orderNumberValue = s.detail?.order?.number ?? cachedOrderNumber;
+  const orderNumber = orderNumberValue ? `#${orderNumberValue}` : `#${s.selectedId}`;
   const totalSum = s.detail?.order?.order_data?.total ?? null;
 
   const readySum = React.useMemo(() => {
@@ -488,7 +496,6 @@ export function WarehousePickingPage(props: {
           <div className="flex items-center gap-3">
             <div>
               <div className="text-[22px] font-bold leading-tight">{`Заказ ${orderNumber}`}</div>
-              {s.detailBusy ? <div className="text-xs text-black/50">Загрузка…</div> : null}
               {s.detailError ? <div className="text-xs text-destructive">{s.detailError}</div> : null}
               {props.offline ? (
                 <div className="text-xs text-destructive">
@@ -519,8 +526,8 @@ export function WarehousePickingPage(props: {
                 <span>{printUi.label}</span>
               </div>
             ) : (
-              <div className="inline-flex items-center gap-2 rounded-lg border border-[#EDEDED] bg-white px-3 py-1">
-                <Skeleton className="h-5 w-24" />
+              <div className="inline-flex items-center gap-2 rounded-lg  bg-black/5 px-3 py-1">
+                <Skeleton className="h-5 w-16" />
               </div>
             )}
 

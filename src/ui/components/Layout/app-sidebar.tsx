@@ -34,7 +34,7 @@ export function AppSidebar({
     const { toggleSidebar, state } = useSidebar()
 
     return (
-        <Sidebar collapsible="icon" className="top-8 overflow-hidden " {...props} >
+        <Sidebar collapsible="icon" className="overflow-hidden" {...props} >
             <SidebarHeader className="p-4 flex items-center justify-between flex-row gap-2" >
                 {state === "expanded" && (
                     <div className="flex items-center gap-1.5">

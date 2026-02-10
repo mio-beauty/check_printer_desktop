@@ -20,6 +20,20 @@ export function StatusPage(props: {
   onStartUpdate: () => Promise<void>;
   onSaveSettings: () => Promise<void>;
 }) {
+  const isDev = import.meta.env.DEV;
+  const DEV_FORCE_UPDATE_BANNER_KEY = "desktop_dev_force_update_banner";
+  const UPDATE_SNOOZE_UNTIL_KEY = "desktop_update_snooze_until_ms";
+  const UPDATE_DISMISSED_KEY = "desktop_update_dismissed_key";
+
+  const [devForceUpdateBanner, setDevForceUpdateBanner] = React.useState<boolean>(() => {
+    if (!isDev) return false;
+    try {
+      return window.localStorage.getItem(DEV_FORCE_UPDATE_BANNER_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+
   const [activationCode, setActivationCode] = React.useState("");
   const [activationBusy, setActivationBusy] = React.useState(false);
   const [activationInfo, setActivationInfo] = React.useState<string | null>(null);
@@ -259,6 +273,62 @@ export function StatusPage(props: {
           </div>
         </CardContent>
       </Card>
+
+      {isDev && (
+        <Card className="border-dashed">
+          <CardHeader>
+            <CardTitle>Dev</CardTitle>
+            <CardDescription>Вспомогательные переключатели для разработки.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={devForceUpdateBanner}
+                onClick={() => {
+                  const next = !devForceUpdateBanner;
+                  setDevForceUpdateBanner(next);
+                  try {
+                    window.localStorage.setItem(DEV_FORCE_UPDATE_BANNER_KEY, next ? "1" : "0");
+                    window.localStorage.removeItem(UPDATE_SNOOZE_UNTIL_KEY);
+                    window.localStorage.removeItem(UPDATE_DISMISSED_KEY);
+                  } catch {
+                    // ignore
+                  }
+
+                  if (next) {
+                    props.setUpdate({ kind: "available", forced: false, message: "Доступна новая версия: v9.9.9 (DEV)" });
+                  } else {
+                    props.setUpdate({ kind: "idle" });
+                  }
+                }}
+                className={[
+                  "relative h-7 w-12 rounded-full border transition-colors",
+                  devForceUpdateBanner ? "bg-emerald-500 border-emerald-500" : "bg-muted border-[#EDEDED]",
+                ].join(" ")}
+              >
+                <span
+                  className={[
+                    "absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform",
+                    devForceUpdateBanner ? "translate-x-5" : "translate-x-0.5",
+                  ].join(" ")}
+                />
+              </button>
+              <div className="text-sm">
+                <div className="font-medium">DEV: плашка обновления</div>
+                <div className="text-xs text-muted-foreground">Форсирует показ баннера (без force update).</div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => props.setUpdate({ kind: "idle" })}>
+                Сбросить update state
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {props.update.kind === "available" && (
         <Card className="border-amber-200 bg-amber-50">

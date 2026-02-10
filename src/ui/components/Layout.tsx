@@ -2,7 +2,7 @@ import React from "react";
 import { AppLayout } from "./AppLayout";
 import { AppSidebar } from "./Layout/app-sidebar";
 import type { ConnectionState } from "./TitleBar";
-import type { PrinterStatus } from "../types";
+import type { PrinterStatus, UpdateState } from "../types";
 import { SidebarProvider } from "@/components/ui/sidebar";
 
 type LayoutProps = {
@@ -12,6 +12,8 @@ type LayoutProps = {
   onClose: () => void;
   status: PrinterStatus | null;
   forcedUpdate: boolean;
+  update?: UpdateState;
+  onStartUpdate?: () => Promise<void>;
   showSidebar?: boolean;
   children: React.ReactNode;
 };
@@ -23,10 +25,11 @@ export function Layout({
   onClose,
   status,
   forcedUpdate,
+  update,
+  onStartUpdate,
   showSidebar = true,
   children,
 }: LayoutProps) {
-  void status;
   void forcedUpdate;
 
   const handleLogout = React.useCallback(async () => {
@@ -41,6 +44,16 @@ export function Layout({
     <SidebarProvider>
       <AppLayout
         connectionState={connectionState}
+        appVersion={status?.appVersion}
+        update={update}
+        forcedUpdate={forcedUpdate}
+        onStartUpdate={
+          onStartUpdate
+            ? () => {
+                void onStartUpdate();
+              }
+            : undefined
+        }
         onMinimize={onMinimize}
         onToggleMaximize={onToggleMaximize}
         onClose={onClose}

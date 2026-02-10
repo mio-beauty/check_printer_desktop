@@ -44,6 +44,8 @@ export function AppRoutes(props: AppRoutesProps) {
               onClose={props.onClose}
               status={props.status}
               forcedUpdate={props.forcedUpdate}
+              update={props.update}
+              onStartUpdate={props.onStartUpdate}
               showSidebar={false}
             >
               <LoginRoute
@@ -67,6 +69,8 @@ export function AppRoutes(props: AppRoutesProps) {
                 onClose={props.onClose}
                 status={props.status}
                 forcedUpdate={props.forcedUpdate}
+                update={props.update}
+                onStartUpdate={props.onStartUpdate}
               >
                 <Outlet />
               </Layout>
