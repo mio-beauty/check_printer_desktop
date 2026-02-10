@@ -1,7 +1,7 @@
 {
   "name": "check_printer_desktop",
   "private": true,
-  "version": "0.1.20",
+  "version": "0.1.21",
   "description": "Windows desktop client (Electron + React) for check printing",
   "main": "dist-electron/main/index.js",
   "author": "",
@@ -65,7 +65,7 @@
   "build": {
     "appId": "uz.miobeauty.check_printer_client",
     "productName": "Mio beauty Склад принтер",
-    "artifactName": "CheckPrinterClient-Setup.${ext}",
+    "artifactName": "MioBeauty-SkladPrinter-Setup.${ext}",
     "directories": {
       "output": "release",
       "buildResources": "build"
