@@ -1,4 +1,4 @@
-import { BrowserWindow, Menu, app, globalShortcut, ipcMain } from "electron";
+﻿import { BrowserWindow, Menu, app, globalShortcut, ipcMain } from "electron";
 import { createRequire } from "node:module";
 import net from "node:net";
 import path from "node:path";
@@ -8,6 +8,7 @@ import semver from "semver";
 import { buildEscPosJob } from "./escpos.js";
 import { sendToTcpPrinter } from "./lan_printer.js";
 import { loadSettings, saveSettings, Settings } from "./settings.js";
+import { listWindowsPrinters, probeWindowsPrinter, sendRawToWindowsPrinter, type UsbProbeResult } from "./windows_usb_printer.js";
 
 const require = createRequire(import.meta.url);
 const { autoUpdater } = require("electron-updater") as { autoUpdater: any };
@@ -42,8 +43,15 @@ let printerReachability: { configured: boolean; ok: boolean; checkedAt: string |
   checkedAt: null,
   error: null,
 };
+let usbPrinterReachability: { configured: boolean; ok: boolean; checkedAt: string | null; error: string | null; details?: any } = {
+  configured: false,
+  ok: false,
+  checkedAt: null,
+  error: null,
+};
 let backendProbeTimer: NodeJS.Timeout | null = null;
 let printerProbeTimer: NodeJS.Timeout | null = null;
+let usbPrinterProbeTimer: NodeJS.Timeout | null = null;
 let windowIsMaximized = false;
 let policyUpdate: { forced: boolean; message: string } | null = null;
 let updaterUpdate: { message: string } | null = null;
@@ -126,6 +134,28 @@ function setPrinterReachability(next: { configured: boolean; ok: boolean; error:
   }
 }
 
+function setUsbPrinterReachability(next: UsbProbeResult) {
+  const changed =
+    usbPrinterReachability.configured !== next.configured ||
+    usbPrinterReachability.ok !== next.ok ||
+    usbPrinterReachability.error !== next.error;
+  usbPrinterReachability = {
+    configured: next.configured,
+    ok: next.ok,
+    checkedAt: next.checkedAt,
+    error: next.error,
+    details: next.details || undefined,
+  };
+  if (!changed) return;
+  const msg = !next.configured
+    ? "USB printer reachability: not configured"
+    : next.ok
+      ? "USB printer reachability: ok"
+      : `USB printer reachability: fail (${next.error || "unknown"})`;
+  log(next.ok ? "info" : "warn", msg);
+  sendStatus();
+}
+
 async function probePrinterReachabilityOnce() {
   const s = ensureSettings();
   const host = String(s.printer.host || "").trim();
@@ -140,6 +170,8 @@ async function probePrinterReachabilityOnce() {
     setPrinterReachability({ configured: true, ok: false, error: "invalid_port", checkedAt });
     return;
   }
+
+  const timeoutMs = 2500;
 
   await new Promise<void>((resolve) => {
     const socket = new net.Socket();
@@ -157,7 +189,9 @@ async function probePrinterReachabilityOnce() {
       resolve();
     };
 
-    socket.setTimeout(900);
+    // Important: too small timeouts may give false negatives (ARP, Wi‑Fi, busy printer).
+    // Keep it reasonably fast for UI, but not overly aggressive.
+    socket.setTimeout(timeoutMs);
     socket.once("connect", () => finish(true, null));
     socket.once("timeout", () => finish(false, "timeout"));
     socket.once("error", (e: any) => {
@@ -178,6 +212,27 @@ function schedulePrinterProbe() {
   if (printerProbeTimer) clearInterval(printerProbeTimer);
   void probePrinterReachabilityOnce();
   printerProbeTimer = setInterval(() => void probePrinterReachabilityOnce(), 7000);
+}
+
+async function probeUsbPrinterReachabilityOnce() {
+  const s = ensureSettings();
+  const mode = s.printer.mode || "lan_then_usb";
+  const name = s.printer.usbPrinterName || null;
+
+  // Probe only when USB is relevant.
+  if (mode !== "usb" && mode !== "lan_then_usb") {
+    setUsbPrinterReachability({ configured: false, ok: false, checkedAt: new Date().toISOString(), error: "usb_disabled" });
+    return;
+  }
+
+  const res = await probeWindowsPrinter(name);
+  setUsbPrinterReachability(res);
+}
+
+function scheduleUsbPrinterProbe() {
+  if (usbPrinterProbeTimer) clearInterval(usbPrinterProbeTimer);
+  void probeUsbPrinterReachabilityOnce();
+  usbPrinterProbeTimer = setInterval(() => void probeUsbPrinterReachabilityOnce(), 15000);
 }
 
 async function probeBackendHealthOnce() {
@@ -221,6 +276,65 @@ function sendWarehouseHint(reason: string) {
 function ensureSettings(): Settings {
   if (!settings) settings = loadSettings();
   return settings;
+}
+
+async function sendToConfiguredPrinter(rawText: string): Promise<void> {
+  const s = ensureSettings();
+  const mode = s.printer.mode || "lan_then_usb";
+  const job = buildEscPosJob(rawText, { encoding: s.printer.encoding });
+
+  const lanCheckedAtMs = printerReachability.checkedAt ? Date.parse(printerReachability.checkedAt) : 0;
+  const lanFresh = Boolean(lanCheckedAtMs && Date.now() - lanCheckedAtMs < 12_000);
+  const lanFreshUnreachable = Boolean(lanFresh && printerReachability.configured && !printerReachability.ok);
+
+  const isSoftLanFailure = (err: string | null) => {
+    const e = String(err || "").toLowerCase();
+    return e === "timeout" || e.includes("timeout");
+  };
+
+  const lanHardDown = lanFreshUnreachable && !isSoftLanFailure(printerReachability.error);
+  const lanSoftDown = lanFreshUnreachable && isSoftLanFailure(printerReachability.error);
+
+  const tryLan = async (timeoutMs = 5000) => {
+    const host = String(s.printer.host || "").trim();
+    const port = Number(s.printer.port || 0);
+    if (!host) throw new Error("Не настроен принтер (host пустой)");
+    await sendToTcpPrinter(job, { host, port, timeoutMs });
+  };
+
+  const tryUsb = async () => {
+    const usbName = String(s.printer.usbPrinterName || "").trim();
+    if (!usbName) throw new Error("USB принтер не выбран");
+    await sendRawToWindowsPrinter({ printerName: usbName, payload: job, docName: "Mio beauty: чек" });
+  };
+
+  if (mode === "lan") {
+    // Treat probe results as a hint:
+    // - "timeout" can be a false negative, so still try LAN with a shorter timeout.
+    // - other errors (ECONNREFUSED/ENETUNREACH/...) are usually hard failures -> fail fast.
+    if (lanHardDown) {
+      throw new Error(`printer_unreachable: ${printerReachability.error || "unknown"}`);
+    }
+    await tryLan(lanSoftDown ? 2500 : 5000);
+    return;
+  }
+  if (mode === "usb") {
+    await tryUsb();
+    return;
+  }
+
+  // fallback (old client behavior): LAN -> USB
+  if (lanHardDown) {
+    log("warn", `LAN принтер недоступен (${printerReachability.error || "unknown"}), пробуем USB...`);
+    await tryUsb();
+    return;
+  }
+  try {
+    await tryLan(lanSoftDown ? 2500 : 5000);
+  } catch (e1) {
+    log("warn", `LAN печать не удалась (${String(e1)}), пробуем USB...`);
+    await tryUsb();
+  }
 }
 
 function warehouseAuth(): WarehouseAuth {
@@ -285,7 +399,10 @@ function sendStatus() {
       port: s.printer.port,
       encoding: s.printer.encoding,
       name: s.printer.name,
+      mode: s.printer.mode || "lan_then_usb",
+      usbPrinterName: s.printer.usbPrinterName || null,
       reachability: printerReachability,
+      usbReachability: usbPrinterReachability,
     },
     warehouse: s.warehouse,
     appVersion: app.getVersion(),
@@ -721,28 +838,17 @@ function connectSocket() {
     const requestId = payload?.request_id;
     const text = String(payload?.text || "");
 
-    try {
-      if (updateAvailable?.forced) {
-        throw new Error("force_update_required");
-      }
-      const s = ensureSettings();
-      const host = s.printer.host;
-      const port = s.printer.port;
-      if (!host) throw new Error("Не настроен принтер (host пустой)");
+	    try {
+	      if (updateAvailable?.forced) {
+	        throw new Error("force_update_required");
+	      }
 
-      log("info", `Печать заказа id=${orderId} number=${number} job=${printJobId} attempt=${payload?.attempt}`);
-      const checkedAtMs = printerReachability.checkedAt ? Date.parse(printerReachability.checkedAt) : 0;
-      const fresh = checkedAtMs && Date.now() - checkedAtMs < 12_000;
-      if (fresh && printerReachability.configured && !printerReachability.ok) {
-        throw new Error(`printer_unreachable: ${printerReachability.error || "unknown"}`);
-      }
+	      log("info", `Печать заказа id=${orderId} number=${number} job=${printJobId} attempt=${payload?.attempt}`);
+	      await sendToConfiguredPrinter(text);
 
-      const job = buildEscPosJob(text, { encoding: s.printer.encoding });
-      await sendToTcpPrinter(job, { host, port, timeoutMs: 5000 });
-
-      socket?.emit("printed_true", {
-        id: orderId,
-        number,
+	      socket?.emit("printed_true", {
+	        id: orderId,
+	        number,
         print_job_id: printJobId,
         request_id: requestId,
       });
@@ -825,10 +931,8 @@ async function createWindow() {
   }
 
   scheduleBackendProbe();
-  scheduleBackendProbe();
-  scheduleBackendProbe();
   schedulePrinterProbe();
-  scheduleBackendProbe();
+  scheduleUsbPrinterProbe();
 
   // If update is forced — do not connect to Socket.IO and do not perform any business actions.
   // UI will show a blocking screen with the update CTA.
@@ -866,7 +970,7 @@ ipcMain.handle("getStatus", async () => {
       checkedAt: backendHttp.checkedAt,
       httpStatus: backendHttp.status,
     },
-    printer: { ...s.printer, host: s.printer.host || null, reachability: printerReachability },
+    printer: { ...s.printer, host: s.printer.host || null, reachability: printerReachability, usbReachability: usbPrinterReachability },
     warehouse: s.warehouse,
     appVersion: app.getVersion(),
     update: {
@@ -905,13 +1009,14 @@ ipcMain.handle("setSettings", async (_evt, next: Partial<Settings>) => {
     printer: next.printer,
     warehouse: next.warehouse,
   };
-  settings = saveSettings(safeNext);
-  schedulePrinterProbe();
-  if (!updateAvailable?.forced) connectSocket();
-  sendStatus();
-  log("info", "Настройки сохранены");
-  return settings;
-});
+	  settings = saveSettings(safeNext);
+	  schedulePrinterProbe();
+	  scheduleUsbPrinterProbe();
+	  if (!updateAvailable?.forced) connectSocket();
+	  sendStatus();
+	  log("info", "Настройки сохранены");
+	  return settings;
+	});
 
 ipcMain.handle("device:activate", async (_evt, payload: { code: string }) => {
   if (deviceActivationPromise) return await deviceActivationPromise;
@@ -971,6 +1076,39 @@ ipcMain.handle("printer:probe", async () => {
   await probePrinterReachabilityOnce();
   sendStatus();
   return printerReachability;
+});
+
+ipcMain.handle("usb:printers", async () => {
+  return await listWindowsPrinters();
+});
+
+ipcMain.handle("usb:probe", async () => {
+  await probeUsbPrinterReachabilityOnce();
+  sendStatus();
+  return usbPrinterReachability;
+});
+
+ipcMain.handle("usb:testPrint", async (_evt, text: string | undefined) => {
+  const s = ensureSettings();
+  const usbName = String(s.printer.usbPrinterName || "").trim();
+  if (!usbName) throw new Error("USB принтер не выбран");
+
+  const sample =
+    text ||
+    [
+      "!CENTER ТЕСТ ПЕЧАТИ (USB)",
+      "!LEFT",
+      "Дата: " + new Date().toISOString(),
+      "Проверка печати через Windows spooler (RAW)",
+      "!BIG ИТОГО: 123 456 сум",
+      "!NORMAL",
+      "Спасибо!",
+    ].join("\n");
+
+  const job = buildEscPosJob(sample, { encoding: s.printer.encoding });
+  await sendRawToWindowsPrinter({ printerName: usbName, payload: job, docName: "Mio beauty: тест (USB)" });
+  log("info", "Тестовая печать (USB) отправлена");
+  return { ok: true };
 });
 
 ipcMain.handle("testPrint", async (_evt, text: string | undefined) => {

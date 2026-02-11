@@ -22,6 +22,8 @@ export type Settings = {
     port: number;
     encoding: string;
     name: string;
+    mode?: "lan" | "usb" | "lan_then_usb";
+    usbPrinterName?: string | null;
   };
   warehouse: {
     name: string;
@@ -54,7 +56,7 @@ function defaultSettings(): Settings {
     clientId: crypto.randomUUID(),
     deviceAuth: { printerId: null, accessToken: null, refreshToken: null },
     warehouseAuth: { phone: null, accessToken: null, refreshToken: null },
-    printer: { host, port, encoding, name },
+    printer: { host, port, encoding, name, mode: "lan_then_usb", usbPrinterName: null },
     warehouse: { name: warehouseName, lat: null, lon: null },
   };
 }
@@ -91,6 +93,11 @@ export function loadSettings(): Settings {
         port: Number(parsed?.printer?.port || defaults.printer.port),
         encoding: String(parsed?.printer?.encoding || defaults.printer.encoding),
         name: String(parsed?.printer?.name || defaults.printer.name),
+        mode: (parsed?.printer?.mode === "lan" || parsed?.printer?.mode === "usb" || parsed?.printer?.mode === "lan_then_usb")
+          ? parsed.printer.mode
+          : defaults.printer.mode,
+        usbPrinterName:
+          (typeof parsed?.printer?.usbPrinterName === "string" ? parsed.printer.usbPrinterName : "")?.trim() || null,
       },
       warehouse: {
         name: String(parsed?.warehouse?.name || defaults.warehouse.name),
@@ -129,6 +136,16 @@ export function saveSettings(partial: Partial<Settings>): Settings {
       port: partial.printer?.port !== undefined ? Number(partial.printer.port) : current.printer.port,
       encoding: partial.printer?.encoding !== undefined ? String(partial.printer.encoding) : current.printer.encoding,
       name: partial.printer?.name !== undefined ? String(partial.printer.name) : current.printer.name,
+      mode:
+        partial.printer?.mode !== undefined
+          ? (partial.printer.mode === "lan" || partial.printer.mode === "usb" || partial.printer.mode === "lan_then_usb"
+            ? partial.printer.mode
+            : current.printer.mode)
+          : current.printer.mode,
+      usbPrinterName:
+        partial.printer?.usbPrinterName !== undefined
+          ? (String(partial.printer.usbPrinterName || "").trim() || null)
+          : (current.printer.usbPrinterName || null),
     },
     warehouse: {
       name: partial.warehouse?.name !== undefined ? String(partial.warehouse.name) : current.warehouse.name,

@@ -31,6 +31,10 @@ export function SettingsPage(props: {
   const deviceActivated = Boolean(props.status?.deviceAuth?.activated ?? props.settings?.deviceAuth?.refreshToken);
   const [debugOpen, setDebugOpen] = React.useState(false);
   const [probeBusy, setProbeBusy] = React.useState(false);
+  const [usbPrinters, setUsbPrinters] = React.useState<string[] | null>(null);
+  const [usbPrintersBusy, setUsbPrintersBusy] = React.useState(false);
+  const [usbProbeBusy, setUsbProbeBusy] = React.useState(false);
+  const [usbTestBusy, setUsbTestBusy] = React.useState(false);
 
   const reach = props.status?.printer?.reachability ?? null;
   const reachLabel = React.useMemo(() => {
@@ -39,6 +43,35 @@ export function SettingsPage(props: {
     if (reach.ok) return "Принтер доступен";
     return "Принтер недоступен";
   }, [reach]);
+
+  const usbReach = props.status?.printer?.usbReachability ?? null;
+  const usbReachLabel = React.useMemo(() => {
+    if (!usbReach) return null;
+    if (!usbReach.configured) return "USB: не настроен";
+    if (usbReach.ok) return "USB: доступен";
+    return "USB: недоступен";
+  }, [usbReach]);
+
+  const usbReachTone = React.useMemo(() => {
+    if (!usbReach) return "bg-[#F6F6F7] text-[#131314]";
+    if (!usbReach.configured) return "bg-[#F6F6F7] text-[#131314]";
+    if (usbReach.ok) return "bg-[#D0F4DA] text-[#16C647]";
+    return "bg-[#FDECEE] text-[#E73C50]";
+  }, [usbReach]);
+
+  const usbReachDetails = React.useMemo(() => {
+    if (!usbReach) return null;
+    const checked = usbReach.checkedAt ? new Date(usbReach.checkedAt) : null;
+    const checkedLabel = checked
+      ? checked.toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
+      : "—";
+    const reason = !usbReach.configured
+      ? "Выберите USB-принтер Windows и сохраните настройки."
+      : usbReach.ok
+        ? null
+        : (usbReach.error || "unknown");
+    return { checkedLabel, reason };
+  }, [usbReach]);
 
   const reachTone = React.useMemo(() => {
     if (!reach) return "bg-[#F6F6F7] text-[#131314]";
@@ -77,6 +110,27 @@ export function SettingsPage(props: {
       }
     );
   }, []);
+
+  const refreshUsbPrinters = React.useCallback(async () => {
+    if (!window.checkPrinter?.usbPrinters) return;
+    setUsbPrintersBusy(true);
+    try {
+      const names = await window.checkPrinter.usbPrinters();
+      setUsbPrinters(Array.isArray(names) ? names : []);
+    } catch (e) {
+      setUsbPrinters([]);
+      // Keep UX simple; details are in logs.
+      alert(`Не удалось получить список USB-принтеров: ${String(e)}`);
+    } finally {
+      setUsbPrintersBusy(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void refreshUsbPrinters();
+  }, [refreshUsbPrinters]);
+
+  const canTestUsbPrint = !props.forcedUpdate && Boolean(props.settings?.printer?.usbPrinterName);
 
   return (
     <div className="p-0 lg:p-0 h-full">
@@ -211,6 +265,58 @@ export function SettingsPage(props: {
                 </Select>
                 <div className="text-xs text-muted-foreground">Кодировка текста, по которой принтер понимает символы</div>
               </div>
+              <div className="grid gap-2">
+                <Label>Режим печати</Label>
+                <Select
+                  value={props.settings?.printer?.mode ?? "lan_then_usb"}
+                  onChange={(e) =>
+                    props.setSettings((p) => {
+                      if (!p) return null;
+                      const printer = ensurePrinter(p);
+                      const mode =
+                        e.target.value === "lan" || e.target.value === "usb" || e.target.value === "lan_then_usb" ? e.target.value : "lan_then_usb";
+                      return { ...p, printer: { ...printer, mode } };
+                    })
+                  }
+                >
+                  <option value="lan_then_usb">LAN → USB (fallback)</option>
+                  <option value="lan">Только LAN (IP:9100)</option>
+                  <option value="usb">Только USB (Windows)</option>
+                </Select>
+                <div className="text-xs text-muted-foreground">
+                  По умолчанию: LAN, если не получилось — пробуем USB (как в старом клиенте)
+                </div>
+              </div>
+
+              <div className="grid gap-2">
+                <Label>USB-принтер (Windows)</Label>
+                <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <Select
+                      value={props.settings?.printer?.usbPrinterName ?? ""}
+                      onChange={(e) =>
+                        props.setSettings((p) => {
+                          if (!p) return null;
+                          const printer = ensurePrinter(p);
+                          const usbPrinterName = e.target.value ? String(e.target.value) : null;
+                          return { ...p, printer: { ...printer, usbPrinterName } };
+                        })
+                      }
+                    >
+                      <option value="">— Не выбран —</option>
+                      {(usbPrinters ?? []).map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                  <Button type="button" variant="outline" onClick={refreshUsbPrinters} disabled={usbPrintersBusy || props.forcedUpdate}>
+                    {usbPrintersBusy ? "Обновляем..." : "Обновить"}
+                  </Button>
+                </div>
+                <div className="text-xs text-muted-foreground">Нужен установленный Windows-драйвер (например, Xprinter XP-80T)</div>
+              </div>
             </div>
 
             <div className="px-4 pb-2">
@@ -278,9 +384,93 @@ export function SettingsPage(props: {
               </div>
             </div>
 
+            <div className="px-4 pb-2">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-background p-4">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-[16px] font-medium leading-[20px]">USB-принтер</div>
+                    {usbReachLabel ? (
+                      <Badge variant="secondary" className={`py-1 px-2 rounded-md text-[13px] leading-[16px] hover:${usbReachTone} ${usbReachTone}`}>
+                        {usbReachLabel}
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" className="py-1 px-2 rounded-md text-[13px] leading-[16px]">
+                        —
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="mt-1 text-[13px] leading-[16px] text-muted-foreground">
+                    {usbReachDetails ? (
+                      <>
+                        Последняя проверка: <span className="font-mono">{usbReachDetails.checkedLabel}</span>
+                        {usbReachDetails.reason ? (
+                          <>
+                            {" "}
+                            · Причина: <span className="font-mono">{usbReachDetails.reason}</span>
+                          </>
+                        ) : null}
+                      </>
+                    ) : (
+                      "—"
+                    )}
+                  </div>
+                  {props.settings?.printer?.usbPrinterName ? (
+                    <div className="mt-1 text-[12px] leading-[16px] text-muted-foreground">
+                      Выбран: <span className="font-mono">{props.settings.printer.usbPrinterName}</span>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={usbProbeBusy || props.forcedUpdate}
+                    onClick={async () => {
+                      if (!window.checkPrinter?.usbProbe) {
+                        alert("usbProbe недоступен (нужна пересборка preload/electron).");
+                        return;
+                      }
+                      setUsbProbeBusy(true);
+                      try {
+                        await window.checkPrinter.usbProbe();
+                      } catch (e) {
+                        alert(`Ошибка проверки USB-принтера: ${String(e)}`);
+                      } finally {
+                        setUsbProbeBusy(false);
+                      }
+                    }}
+                  >
+                    {usbProbeBusy ? "Проверяем..." : "Проверить USB сейчас"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
             <div className="py-6 px-4 flex flex-wrap justify-end gap-2">
               <Button variant="outline" onClick={props.onTestPrint} disabled={!canTestPrint}>
                 Тестовая печать
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!canTestUsbPrint || usbTestBusy}
+                onClick={async () => {
+                  if (!window.checkPrinter?.usbTestPrint) {
+                    alert("usbTestPrint недоступен (нужна пересборка preload/electron).");
+                    return;
+                  }
+                  setUsbTestBusy(true);
+                  try {
+                    await window.checkPrinter.usbTestPrint();
+                  } catch (e) {
+                    alert(`Ошибка USB-печати: ${String(e)}`);
+                  } finally {
+                    setUsbTestBusy(false);
+                  }
+                }}
+              >
+                {usbTestBusy ? "Печатаем (USB)..." : "Тестовая печать (USB)"}
               </Button>
               <Button onClick={props.onSaveSettings} disabled={!props.settings || props.forcedUpdate}>
                 Сохранить настройки

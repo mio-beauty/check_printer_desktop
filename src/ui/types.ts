@@ -16,7 +16,10 @@ export type PrinterStatus = {
     port: number;
     encoding: string;
     name: string;
+    mode?: "lan" | "usb" | "lan_then_usb";
+    usbPrinterName?: string | null;
     reachability?: { configured: boolean; ok: boolean; checkedAt: string | null; error: string | null };
+    usbReachability?: { configured: boolean; ok: boolean; checkedAt: string | null; error: string | null; details?: any };
   };
   warehouse: { name: string; lat: number | null; lon: number | null };
   appVersion?: string;
@@ -43,7 +46,14 @@ export type Settings = {
     accessToken: string | null;
     refreshToken: string | null;
   };
-  printer: { host: string; port: number; encoding: string; name: string };
+  printer: {
+    host: string;
+    port: number;
+    encoding: string;
+    name: string;
+    mode?: "lan" | "usb" | "lan_then_usb";
+    usbPrinterName?: string | null;
+  };
   warehouse: { name: string; lat: number | null; lon: number | null };
 };
 
@@ -51,6 +61,7 @@ export type LogEntry = { ts: string; level: "info" | "warn" | "error"; message: 
 
 export type DeviceActivateResult = { printer_id?: string };
 export type PrinterProbeResult = { configured: boolean; ok: boolean; checkedAt: string | null; error: string | null };
+export type UsbPrinterProbeResult = { configured: boolean; ok: boolean; checkedAt: string | null; error: string | null; details?: any };
 
 export type WarehouseOrdersParams = {
   status?: string | null;
@@ -72,6 +83,9 @@ export interface CheckPrinter {
   getLogs: () => Promise<LogEntry[]>;
   testPrint: (text?: string) => Promise<{ ok: boolean }>;
   printerProbe?: () => Promise<PrinterProbeResult>;
+  usbPrinters?: () => Promise<string[]>;
+  usbProbe?: () => Promise<UsbPrinterProbeResult>;
+  usbTestPrint?: (text?: string) => Promise<{ ok: boolean }>;
   checkUpdates: () => Promise<{ available: boolean; forced: boolean; message: string }>;
   startUpdate: () => Promise<void>;
   deviceActivate: (code: string) => Promise<DeviceActivateResult>;
