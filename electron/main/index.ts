@@ -967,6 +967,12 @@ ipcMain.handle("getLogs", async () => {
   return logs;
 });
 
+ipcMain.handle("printer:probe", async () => {
+  await probePrinterReachabilityOnce();
+  sendStatus();
+  return printerReachability;
+});
+
 ipcMain.handle("testPrint", async (_evt, text: string | undefined) => {
   const s = ensureSettings();
   const host = s.printer.host;

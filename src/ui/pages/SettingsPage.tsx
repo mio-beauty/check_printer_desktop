@@ -30,6 +30,30 @@ export function SettingsPage(props: {
   const [activationError, setActivationError] = React.useState<string | null>(null);
   const deviceActivated = Boolean(props.status?.deviceAuth?.activated ?? props.settings?.deviceAuth?.refreshToken);
   const [debugOpen, setDebugOpen] = React.useState(false);
+  const [probeBusy, setProbeBusy] = React.useState(false);
+
+  const reach = props.status?.printer?.reachability ?? null;
+  const reachLabel = React.useMemo(() => {
+    if (!reach) return null;
+    if (!reach.configured) return "Принтер не настроен";
+    if (reach.ok) return "Принтер доступен";
+    return "Принтер недоступен";
+  }, [reach]);
+
+  const reachTone = React.useMemo(() => {
+    if (!reach) return "bg-[#F6F6F7] text-[#131314]";
+    if (!reach.configured) return "bg-[#F6F6F7] text-[#131314]";
+    if (reach.ok) return "bg-[#D0F4DA] text-[#16C647]";
+    return "bg-[#FDECEE] text-[#E73C50]";
+  }, [reach]);
+
+  const reachDetails = React.useMemo(() => {
+    if (!reach) return null;
+    const checked = reach.checkedAt ? new Date(reach.checkedAt) : null;
+    const checkedLabel = checked ? checked.toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
+    const reason = !reach.configured ? "Укажите host/port и сохраните настройки." : reach.ok ? null : (reach.error || "unknown");
+    return { checkedLabel, reason };
+  }, [reach]);
 
   const ensurePrinter = React.useCallback((p: Settings): Settings["printer"] => {
     return (
@@ -186,6 +210,71 @@ export function SettingsPage(props: {
                   <option value="utf-8">utf-8</option>
                 </Select>
                 <div className="text-xs text-muted-foreground">Кодировка текста, по которой принтер понимает символы</div>
+              </div>
+            </div>
+
+            <div className="px-4 pb-2">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-background p-4">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-[16px] font-medium leading-[20px]">Подключение к принтеру</div>
+                    {reachLabel ? (
+                      <Badge variant="secondary" className={`py-1 px-2 rounded-md text-[13px] leading-[16px] hover:${reachTone} ${reachTone}`}>
+                        {reachLabel}
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" className="py-1 px-2 rounded-md text-[13px] leading-[16px]">
+                        —
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="mt-1 text-[13px] leading-[16px] text-muted-foreground">
+                    {reachDetails ? (
+                      <>
+                        Последняя проверка: <span className="font-mono">{reachDetails.checkedLabel}</span>
+                        {reachDetails.reason ? (
+                          <>
+                            {" "}
+                            · Причина: <span className="font-mono">{reachDetails.reason}</span>
+                          </>
+                        ) : null}
+                      </>
+                    ) : (
+                      "—"
+                    )}
+                  </div>
+                  {props.settings?.printer?.host ? (
+                    <div className="mt-1 text-[12px] leading-[16px] text-muted-foreground">
+                      Быстрая проверка в PowerShell:{" "}
+                      <span className="font-mono">
+                        Test-NetConnection {props.settings.printer.host} -Port {props.settings.printer.port}
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    disabled={probeBusy || props.forcedUpdate}
+                    onClick={async () => {
+                      if (!window.checkPrinter?.printerProbe) {
+                        alert("printerProbe недоступен (нужна пересборка preload/electron).");
+                        return;
+                      }
+                      setProbeBusy(true);
+                      try {
+                        await window.checkPrinter.printerProbe();
+                      } catch (e) {
+                        alert(`Ошибка проверки принтера: ${String(e)}`);
+                      } finally {
+                        setProbeBusy(false);
+                      }
+                    }}
+                  >
+                    {probeBusy ? "Проверяем..." : "Проверить сейчас"}
+                  </Button>
+                </div>
               </div>
             </div>
 

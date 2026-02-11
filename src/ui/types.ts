@@ -50,6 +50,7 @@ export type Settings = {
 export type LogEntry = { ts: string; level: "info" | "warn" | "error"; message: string };
 
 export type DeviceActivateResult = { printer_id?: string };
+export type PrinterProbeResult = { configured: boolean; ok: boolean; checkedAt: string | null; error: string | null };
 
 export type WarehouseOrdersParams = {
   status?: string | null;
@@ -70,6 +71,7 @@ export interface CheckPrinter {
   onWarehouseHint?: (cb: (e: { reason: string; ts: string }) => void) => () => void;
   getLogs: () => Promise<LogEntry[]>;
   testPrint: (text?: string) => Promise<{ ok: boolean }>;
+  printerProbe?: () => Promise<PrinterProbeResult>;
   checkUpdates: () => Promise<{ available: boolean; forced: boolean; message: string }>;
   startUpdate: () => Promise<void>;
   deviceActivate: (code: string) => Promise<DeviceActivateResult>;

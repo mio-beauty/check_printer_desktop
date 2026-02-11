@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld("checkPrinter", {
   },
   getLogs: () => ipcRenderer.invoke("getLogs"),
   testPrint: (text) => ipcRenderer.invoke("testPrint", text),
+  printerProbe: () => ipcRenderer.invoke("printer:probe"),
   checkUpdates: () => ipcRenderer.invoke("checkUpdates"),
   startUpdate: () => ipcRenderer.invoke("startUpdate"),
   deviceActivate: (code) => ipcRenderer.invoke("device:activate", { code }),
