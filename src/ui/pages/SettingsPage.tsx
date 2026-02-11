@@ -49,13 +49,15 @@ export function SettingsPage(props: {
     if (!usbReach) return null;
     if (!usbReach.configured) return "USB: не настроен";
     if (usbReach.ok) return "USB: доступен";
-    return "USB: недоступен";
+    if (usbReach.error === "usb_printer_offline") return "USB: offline (job уйдёт в очередь)";
+    return "USB: ошибка";
   }, [usbReach]);
 
   const usbReachTone = React.useMemo(() => {
     if (!usbReach) return "bg-[#F6F6F7] text-[#131314]";
     if (!usbReach.configured) return "bg-[#F6F6F7] text-[#131314]";
     if (usbReach.ok) return "bg-[#D0F4DA] text-[#16C647]";
+    if (usbReach.error === "usb_printer_offline") return "bg-[#FFE9D6] text-[#FD9334]";
     return "bg-[#FDECEE] text-[#E73C50]";
   }, [usbReach]);
 
@@ -99,7 +101,14 @@ export function SettingsPage(props: {
     );
   }, []);
 
-  const canTestPrint = !props.forcedUpdate && !Boolean(props.status?.printer?.reachability?.configured && !props.status?.printer?.reachability?.ok);
+  const canTestPrint = React.useMemo(() => {
+    if (props.forcedUpdate) return false;
+    const host = String(props.settings?.printer?.host ?? "").trim();
+    const port = Number(props.settings?.printer?.port ?? 0);
+    if (!host) return false;
+    if (!Number.isFinite(port) || port <= 0) return false;
+    return true;
+  }, [props.forcedUpdate, props.settings?.printer?.host, props.settings?.printer?.port]);
 
   const ensureWarehouse = React.useCallback((p: Settings): Settings["warehouse"] => {
     return (

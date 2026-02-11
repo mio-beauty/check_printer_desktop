@@ -1108,6 +1108,13 @@ ipcMain.handle("usb:testPrint", async (_evt, text: string | undefined) => {
   const job = buildEscPosJob(sample, { encoding: s.printer.encoding });
   await sendRawToWindowsPrinter({ printerName: usbName, payload: job, docName: "Mio beauty: тест (USB)" });
   log("info", "Тестовая печать (USB) отправлена");
+  // Refresh probe after successful job submission so UI reflects current device state.
+  try {
+    await probeUsbPrinterReachabilityOnce();
+  } catch {
+    // ignore
+  }
+  sendStatus();
   return { ok: true };
 });
 
@@ -1129,12 +1136,15 @@ ipcMain.handle("testPrint", async (_evt, text: string | undefined) => {
     ].join("\n");
   const checkedAtMs = printerReachability.checkedAt ? Date.parse(printerReachability.checkedAt) : 0;
   const fresh = checkedAtMs && Date.now() - checkedAtMs < 12_000;
-  if (fresh && printerReachability.configured && !printerReachability.ok) {
+  const reachErr = printerReachability.error || "unknown";
+  const reachErrLower = String(reachErr).toLowerCase();
+  const softFail = reachErrLower === "timeout" || reachErrLower.includes("timeout");
+  if (fresh && printerReachability.configured && !printerReachability.ok && !softFail) {
     throw new Error(`printer_unreachable: ${printerReachability.error || "unknown"}`);
   }
 
   const job = buildEscPosJob(sample, { encoding: s.printer.encoding });
-  await sendToTcpPrinter(job, { host, port, timeoutMs: 5000 });
+  await sendToTcpPrinter(job, { host, port, timeoutMs: softFail ? 2500 : 5000 });
   log("info", "Тестовая печать отправлена");
   return { ok: true };
 });
