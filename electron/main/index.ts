@@ -156,18 +156,65 @@ function setUsbPrinterReachability(next: UsbProbeResult) {
   sendStatus();
 }
 
-async function probePrinterReachabilityOnce() {
-  const s = ensureSettings();
-  const host = String(s.printer.host || "").trim();
-  const port = Number(s.printer.port || 0);
-  const checkedAt = new Date().toISOString();
+function parseLanEndpoint(printer: { host?: unknown; port?: unknown }) {
+  let hostRaw = String(printer?.host || "").trim();
+  let portRaw = Number(printer?.port || 0);
+
+  if (!hostRaw) {
+    return { configured: false as const, host: "", port: 0, error: "printer_not_configured" as const };
+  }
+
+  // Allow users to paste values like:
+  // - 192.168.1.100
+  // - 192.168.1.100:9100
+  // - tcp://192.168.1.100:9100
+  hostRaw = hostRaw.replace(/^https?:\/\//i, "").replace(/^tcp:\/\//i, "");
+  hostRaw = hostRaw.replace(/\/.*$/, ""); // strip path if any
+
+  let host = hostRaw;
+  let port = portRaw;
+
+  // IPv6 in brackets: [::1]:9100
+  const m6 = hostRaw.match(/^\[([^\]]+)\](?::(\d+))?$/);
+  if (m6) {
+    host = m6[1];
+    if (m6[2]) port = Number(m6[2]);
+  } else {
+    // IPv4/hostname: host:port (but avoid treating raw IPv6 as host:port)
+    const idx = hostRaw.lastIndexOf(":");
+    const hasColon = idx > 0;
+    const looksLikeIpv6 = hostRaw.includes(":") && hostRaw.includes("::");
+    if (hasColon && !looksLikeIpv6) {
+      const candidateHost = hostRaw.slice(0, idx).trim();
+      const candidatePort = hostRaw.slice(idx + 1).trim();
+      if (/^\d+$/.test(candidatePort)) {
+        host = candidateHost;
+        port = Number(candidatePort);
+      }
+    }
+  }
 
   if (!host) {
-    setPrinterReachability({ configured: false, ok: false, error: "printer_not_configured", checkedAt });
-    return;
+    return { configured: false as const, host: "", port: 0, error: "printer_not_configured" as const };
   }
   if (!Number.isFinite(port) || port <= 0) {
-    setPrinterReachability({ configured: true, ok: false, error: "invalid_port", checkedAt });
+    return { configured: true as const, host, port: 0, error: "invalid_port" as const };
+  }
+
+  return { configured: true as const, host, port, error: null as string | null };
+}
+
+async function probePrinterReachabilityOnce() {
+  const s = ensureSettings();
+  const checkedAt = new Date().toISOString();
+
+  const ep = parseLanEndpoint(s.printer);
+  if (!ep.configured) {
+    setPrinterReachability({ configured: false, ok: false, error: ep.error, checkedAt });
+    return;
+  }
+  if (ep.error) {
+    setPrinterReachability({ configured: true, ok: false, error: ep.error, checkedAt });
     return;
   }
 
@@ -201,7 +248,7 @@ async function probePrinterReachabilityOnce() {
     });
 
     try {
-      socket.connect(port, host);
+      socket.connect({ host: ep.host, port: ep.port, family: 4 });
     } catch (e) {
       finish(false, String(e));
     }
@@ -296,10 +343,10 @@ async function sendToConfiguredPrinter(rawText: string): Promise<void> {
   const lanSoftDown = lanFreshUnreachable && isSoftLanFailure(printerReachability.error);
 
   const tryLan = async (timeoutMs = 5000) => {
-    const host = String(s.printer.host || "").trim();
-    const port = Number(s.printer.port || 0);
-    if (!host) throw new Error("Не настроен принтер (host пустой)");
-    await sendToTcpPrinter(job, { host, port, timeoutMs });
+    const ep = parseLanEndpoint(s.printer);
+    if (!ep.configured) throw new Error("Не настроен принтер (host пустой)");
+    if (ep.error) throw new Error(ep.error);
+    await sendToTcpPrinter(job, { host: ep.host, port: ep.port, timeoutMs });
   };
 
   const tryUsb = async () => {
@@ -1120,9 +1167,9 @@ ipcMain.handle("usb:testPrint", async (_evt, text: string | undefined) => {
 
 ipcMain.handle("testPrint", async (_evt, text: string | undefined) => {
   const s = ensureSettings();
-  const host = s.printer.host;
-  const port = s.printer.port;
-  if (!host) throw new Error("Не настроен принтер (host пустой)");
+  const ep = parseLanEndpoint(s.printer);
+  if (!ep.configured) throw new Error("Не настроен принтер (host пустой)");
+  if (ep.error) throw new Error(ep.error);
   const sample =
     text ||
     [
@@ -1144,7 +1191,7 @@ ipcMain.handle("testPrint", async (_evt, text: string | undefined) => {
   }
 
   const job = buildEscPosJob(sample, { encoding: s.printer.encoding });
-  await sendToTcpPrinter(job, { host, port, timeoutMs: softFail ? 2500 : 5000 });
+  await sendToTcpPrinter(job, { host: ep.host, port: ep.port, timeoutMs: softFail ? 2500 : 5000 });
   log("info", "Тестовая печать отправлена");
   return { ok: true };
 });

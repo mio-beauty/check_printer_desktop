@@ -82,24 +82,46 @@ export async function probeWindowsPrinter(printerName: string | null | undefined
   if (!name) return { configured: false, ok: false, checkedAt, error: "usb_printer_not_configured" };
   if (!isWindows()) return { configured: true, ok: false, checkedAt, error: "usb_not_supported" };
 
-  const ps = await execFileAsync(
-    "powershell.exe",
-    psArgs(
-      [
-        "$ErrorActionPreference = 'Stop'",
-        `$p = Get-Printer -Name ${JSON.stringify(name)}`,
-        "$o = [ordered]@{",
-        "  Name = $p.Name",
-        "  PrinterStatus = $p.PrinterStatus",
-        "  WorkOffline = $p.WorkOffline",
-        "}",
-        "$o | ConvertTo-Json -Compress",
-      ].join("; "),
-    ),
-    { timeoutMs: 8000 },
-  );
+  const psProbe = async (command: string) => {
+    return await execFileAsync("powershell.exe", psArgs(command), { timeoutMs: 8000 });
+  };
 
+  const buildProbeScript = (getPrinterExpr: string) =>
+    [
+      "$ErrorActionPreference = 'Stop'",
+      `$p = ${getPrinterExpr}`,
+      "if ($null -eq $p) { throw 'not_found' }",
+      "$o = [ordered]@{",
+      "  Name = $p.Name",
+      "  PrinterStatus = $p.PrinterStatus",
+      "  WorkOffline = $p.WorkOffline",
+      "}",
+      "$o | ConvertTo-Json -Compress",
+    ].join("; ");
+
+  // 1) Prefer direct lookup.
+  let ps = await psProbe(buildProbeScript(`Get-Printer -Name ${JSON.stringify(name)}`));
+
+  // 2) Some environments have quirks with -Name binding; try filtering from the full list.
   if (ps.code !== 0) {
+    ps = await psProbe(
+      buildProbeScript(`(Get-Printer | Where-Object { $_.Name -eq ${JSON.stringify(name)} } | Select-Object -First 1)`),
+    );
+  }
+
+  // 3) Fallback: if we can list printers and name exists, report as configured (status unknown).
+  if (ps.code !== 0) {
+    const printers = await listWindowsPrinters();
+    const found = printers.some((p) => p.localeCompare(name, "ru", { sensitivity: "accent" }) === 0);
+    if (found) {
+      return {
+        configured: true,
+        ok: true,
+        checkedAt,
+        error: null,
+        details: { printerStatus: null, workOffline: null },
+      };
+    }
     return { configured: true, ok: false, checkedAt, error: "usb_printer_not_found" };
   }
 
@@ -215,4 +237,3 @@ export async function sendRawToWindowsPrinter(opts: { printerName: string; paylo
     throw new Error(msg);
   }
 }
-
