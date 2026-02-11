@@ -435,6 +435,11 @@ async function ensureDeviceAccessToken(opts: { force?: boolean } = {}): Promise<
   const res = await apiFetchJson("/api/device/auth/refresh", { method: "POST", json: { refresh_token: refresh }, timeoutMs: 8000 });
   if (!res.ok) {
     const msg = res.json?.message || res.json?.error || res.json?.raw || `device refresh failed (${res.status})`;
+    // If refresh token is invalid/expired — clear local device auth and require re-activation.
+    if (res.status === 401) {
+      saveDeviceAuth({ accessToken: null, refreshToken: null });
+      sendStatus();
+    }
     throw new Error(String(msg));
   }
   const access = res.json?.access_token ? String(res.json.access_token) : "";
@@ -872,9 +877,13 @@ ipcMain.handle("getStatus", async () => {
       progress: updateProgress,
       error: updateError,
     },
+    deviceAuth: {
+      printerId: s.deviceAuth?.printerId || null,
+      activated: Boolean(s.deviceAuth?.refreshToken),
+    },
     warehouseAuth: {
       phone: s.warehouseAuth?.phone || null,
-      hasToken: Boolean(s.warehouseAuth?.accessToken),
+      hasToken: Boolean(s.warehouseAuth?.accessToken || s.warehouseAuth?.refreshToken),
     },
     window: {
       maximized: windowIsMaximized,
@@ -887,7 +896,16 @@ ipcMain.handle("getSettings", async () => {
 });
 
 ipcMain.handle("setSettings", async (_evt, next: Partial<Settings>) => {
-  settings = saveSettings(next);
+  // Never allow renderer to overwrite auth tokens/client_id by accident.
+  // Renderer UI often operates on a stale `settings` snapshot (tokens are updated in main on login/activate),
+  // so sending back the full object can clear tokens and "log out" the user.
+  const safeNext: Partial<Settings> = {
+    backendUrl: next.backendUrl,
+    printerClientToken: next.printerClientToken,
+    printer: next.printer,
+    warehouse: next.warehouse,
+  };
+  settings = saveSettings(safeNext);
   schedulePrinterProbe();
   if (!updateAvailable?.forced) connectSocket();
   sendStatus();

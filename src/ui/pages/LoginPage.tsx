@@ -51,6 +51,13 @@ export function LoginPage(props: {
         await window.checkPrinter.setSettings({ backendUrl: String(props.settings.backendUrl).trim() });
       }
       await window.checkPrinter.warehouseLogin(phone.trim().replace(/\s+/g, ""), password);
+      // Sync settings snapshot from main (tokens are stored/updated in main process).
+      try {
+        const fresh = await window.checkPrinter.getSettings();
+        props.setSettings(fresh);
+      } catch {
+        // ignore
+      }
       setPassword("");
     } catch (e) {
       setError(String(e));

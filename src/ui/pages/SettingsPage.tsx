@@ -28,7 +28,7 @@ export function SettingsPage(props: {
   const activationInFlightRef = React.useRef(false);
   const [activationInfo, setActivationInfo] = React.useState<string | null>(null);
   const [activationError, setActivationError] = React.useState<string | null>(null);
-  const deviceActivated = Boolean(props.settings?.deviceAuth?.refreshToken);
+  const deviceActivated = Boolean(props.status?.deviceAuth?.activated ?? props.settings?.deviceAuth?.refreshToken);
   const [debugOpen, setDebugOpen] = React.useState(false);
 
   const ensurePrinter = React.useCallback((p: Settings): Settings["printer"] => {
@@ -247,6 +247,13 @@ export function SettingsPage(props: {
                           throw new Error("deviceActivate недоступен (нужна пересборка preload)");
                         const res = await window.checkPrinter.deviceActivate(activationCode);
                         setActivationInfo(`Активировано: printer_id=${res?.printer_id || "—"}`);
+                        // Sync settings snapshot from main so UI reflects activation state (tokens live in main).
+                        try {
+                          const fresh = await window.checkPrinter.getSettings();
+                          props.setSettings(fresh);
+                        } catch {
+                          // ignore
+                        }
                         setActivationCode("");
                       } catch (err) {
                         setActivationError(String(err));
