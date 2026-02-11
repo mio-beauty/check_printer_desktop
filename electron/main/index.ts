@@ -47,6 +47,7 @@ let printerProbeTimer: NodeJS.Timeout | null = null;
 let windowIsMaximized = false;
 let policyUpdate: { forced: boolean; message: string } | null = null;
 let updaterUpdate: { message: string } | null = null;
+let deviceActivationPromise: Promise<{ ok: true; printer_id: string }> | null = null;
 
 function recomputeUpdateAvailable() {
   const forced = Boolean(policyUpdate?.forced);
@@ -895,43 +896,53 @@ ipcMain.handle("setSettings", async (_evt, next: Partial<Settings>) => {
 });
 
 ipcMain.handle("device:activate", async (_evt, payload: { code: string }) => {
-  const code = String(payload?.code || "").trim().toUpperCase();
-  if (!code) throw new Error("code required");
-  if (updateAvailable?.forced) throw new Error("force_update_required");
+  if (deviceActivationPromise) return await deviceActivationPromise;
 
-  const s = ensureSettings();
-  log("info", "Device activation start");
-  const res = await apiFetchJson("/api/device/activate", {
-    method: "POST",
-    json: {
-      code,
-      client_id: s.clientId,
-      printer: {
-        name: s.printer.name,
-        ip: s.printer.host,
-        port: s.printer.port,
-        version: "check_printer_desktop",
+  deviceActivationPromise = (async () => {
+    const code = String(payload?.code || "")
+      .trim()
+      .toUpperCase();
+    if (!code) throw new Error("code required");
+    if (updateAvailable?.forced) throw new Error("force_update_required");
+
+    const s = ensureSettings();
+    log("info", "Device activation start");
+    const res = await apiFetchJson("/api/device/activate", {
+      method: "POST",
+      json: {
+        code,
+        client_id: s.clientId,
+        printer: {
+          name: s.printer.name,
+          ip: s.printer.host,
+          port: s.printer.port,
+          version: "check_printer_desktop",
+        },
       },
-    },
-    timeoutMs: 12000,
+      timeoutMs: 12000,
+    });
+    if (!res.ok) {
+      const msg = res.json?.message || res.json?.error || res.json?.raw || `activate failed (${res.status})`;
+      log("error", `Device activation failed: ${String(msg)}`);
+      throw new Error(String(msg));
+    }
+
+    const access = res.json?.access_token ? String(res.json.access_token) : "";
+    const refresh = res.json?.refresh_token ? String(res.json.refresh_token) : "";
+    const printerId = res.json?.printer_id ? String(res.json.printer_id) : "";
+    if (!access || !refresh || !printerId) throw new Error("activate: tokens missing");
+
+    saveDeviceAuth({ printerId, accessToken: access, refreshToken: refresh });
+    log("info", `Device activation OK printer_id=${printerId}`);
+
+    if (!updateAvailable?.forced) connectSocket();
+    sendStatus();
+    return { ok: true as const, printer_id: printerId };
+  })().finally(() => {
+    deviceActivationPromise = null;
   });
-  if (!res.ok) {
-    const msg = res.json?.message || res.json?.error || res.json?.raw || `activate failed (${res.status})`;
-    log("error", `Device activation failed: ${String(msg)}`);
-    throw new Error(String(msg));
-  }
 
-  const access = res.json?.access_token ? String(res.json.access_token) : "";
-  const refresh = res.json?.refresh_token ? String(res.json.refresh_token) : "";
-  const printerId = res.json?.printer_id ? String(res.json.printer_id) : "";
-  if (!access || !refresh || !printerId) throw new Error("activate: tokens missing");
-
-  saveDeviceAuth({ printerId, accessToken: access, refreshToken: refresh });
-  log("info", `Device activation OK printer_id=${printerId}`);
-
-  if (!updateAvailable?.forced) connectSocket();
-  sendStatus();
-  return { ok: true, printer_id: printerId };
+  return await deviceActivationPromise;
 });
 
 ipcMain.handle("getLogs", async () => {

@@ -25,6 +25,7 @@ export function SettingsPage(props: {
 }) {
   const [activationCode, setActivationCode] = React.useState("");
   const [activationBusy, setActivationBusy] = React.useState(false);
+  const activationInFlightRef = React.useRef(false);
   const [activationInfo, setActivationInfo] = React.useState<string | null>(null);
   const [activationError, setActivationError] = React.useState<string | null>(null);
   const deviceActivated = Boolean(props.settings?.deviceAuth?.refreshToken);
@@ -238,6 +239,8 @@ export function SettingsPage(props: {
                     (async () => {
                       setActivationInfo(null);
                       setActivationError(null);
+                      if (activationInFlightRef.current) return;
+                      activationInFlightRef.current = true;
                       setActivationBusy(true);
                       try {
                         if (!window.checkPrinter?.deviceActivate)
@@ -249,6 +252,7 @@ export function SettingsPage(props: {
                         setActivationError(String(err));
                       } finally {
                         setActivationBusy(false);
+                        activationInFlightRef.current = false;
                       }
                     })();
                   }}
@@ -267,7 +271,7 @@ export function SettingsPage(props: {
               )}
             </div>
 
-            {/* <Collapsible open={debugOpen} onOpenChange={setDebugOpen}>
+            <Collapsible open={debugOpen} onOpenChange={setDebugOpen}>
               <div className="mt-10 flex items-center justify-between">
                 <CollapsibleTrigger asChild>
                   <Button variant="ghost" className="gap-2 px-0">
@@ -328,11 +332,10 @@ export function SettingsPage(props: {
                   </div>
                 </div>
               </CollapsibleContent>
-            </Collapsible> */}
+            </Collapsible>
           </div>
         </section>
       </div>
     </div>
   );
 }
-

@@ -28,6 +28,13 @@ jobs:
       - name: Package (electron-builder)
         run: npx electron-builder --win nsis --publish never
 
+      - name: Add legacy installer filename (for backward-compatible downloads)
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path release -Filter *.exe | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $exe) { throw "No .exe found in release/ after packaging" }
+          Copy-Item -Force $exe.FullName (Join-Path $exe.DirectoryName "CheckPrinterClient-Setup.exe")
+
       - name: GitHub Release
         uses: softprops/action-gh-release@v2
         with:

@@ -79,17 +79,17 @@ export function TitleBar({
         <span className="leading-[16px]">{connectionState.label}</span>
       </div>
       <div className="flex items-center gap-1" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
-        <Button variant="ghost" size="icon" onClick={onMinimize} aria-label="РЎРІРµСЂРЅСѓС‚СЊ" className="rounded-none">
+        <Button variant="ghost" size="icon" onClick={onMinimize} aria-label="Свернуть" className="rounded-none">
           <Minus className=" w-3.5" strokeWidth={1.5} />
         </Button>
-        <Button variant="ghost" size="icon" onClick={onToggleMaximize} aria-label="Р Р°Р·РІРµСЂРЅСѓС‚СЊ" className="rounded-none">
+        <Button variant="ghost" size="icon" onClick={onToggleMaximize} aria-label="Развернуть" className="rounded-none">
           <Square className=" w-3" strokeWidth={1.5} />
         </Button>
         <Button
           variant="ghost"
           size="icon"
           onClick={onClose}
-          aria-label="Р—Р°РєСЂС‹С‚СЊ"
+          aria-label="Закрыть"
           className="rounded-none hover:bg-red-600/70 hover:text-white"
         >
           <X className="w-4" strokeWidth={1.5} />
