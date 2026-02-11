@@ -94,7 +94,7 @@ export function AppSidebar({
                             icon: Frame,
                         },
                         {
-                            name: "Статус",
+                            name: "Настройки",
                             url: "/status",
                             icon: PieChart,
                         },

@@ -3,7 +3,7 @@ import { HashRouter, Navigate, Outlet, Route, Routes, useLocation } from "react-
 import { ConnectionState } from "../components/TitleBar";
 import { Layout } from "../components/Layout";
 import { WarehousePage } from "../pages/WarehousePage";
-import { StatusPage } from "../pages/StatusPage";
+import { SettingsPage } from "../pages/SettingsPage";
 import { LoginPage } from "../pages/LoginPage";
 import { ForcedUpdatePage } from "../pages/ForcedUpdatePage";
 import type { Settings, UpdateState, LogEntry, PrinterStatus } from "../types";
@@ -112,7 +112,7 @@ export function AppRoutes(props: AppRoutesProps) {
             <Route
               path="status"
               element={
-                <StatusPage
+                <SettingsPage
                   status={props.status}
                   settings={props.settings}
                   setSettings={props.setSettings}
