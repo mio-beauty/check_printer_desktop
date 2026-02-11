@@ -907,6 +907,17 @@ function connectSocket() {
     sendWarehouseHint(kind);
   });
 
+  // Для склада: изменения статуса печати (может влиять на список/фильтры и "удаление" из очереди).
+  socket.on("printed_true", (_payload) => {
+    sendWarehouseHint("printed_true");
+  });
+  socket.on("printed_false", (_payload) => {
+    sendWarehouseHint("printed_false");
+  });
+  socket.on("printed_unknown", (_payload) => {
+    sendWarehouseHint("printed_unknown");
+  });
+
   socket.on("print_text", async (payload) => {
     const orderId = payload?.id;
     const number = payload?.number;
