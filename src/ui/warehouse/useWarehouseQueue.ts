@@ -18,6 +18,7 @@ export function useWarehouseQueue(opts: {
   auth: WarehouseAuthStatus | null;
 }) {
   const hasToken = Boolean(opts.auth?.hasToken);
+  const hintRefreshTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [mode, setMode] = React.useState<"queue" | "problems">("queue");
   const [phone, setPhone] = React.useState("");
@@ -367,6 +368,38 @@ export function useWarehouseQueue(opts: {
     if (!opts.online) return;
     void refreshPickingTabs();
   }, [hasToken, opts.active, opts.online, refreshPickingTabs]);
+
+  React.useEffect(() => {
+    if (!opts.active) return;
+    if (!hasToken) return;
+    if (!opts.online) return;
+    if (opts.forcedUpdate) return;
+
+    const off =
+      window.checkPrinter?.onWarehouseHint?.((e) => {
+        const reason = String(e?.reason || "");
+        if (!reason) return;
+        // `auth_expired` is handled globally in `src/ui/App.tsx`.
+        if (reason === "auth_expired") return;
+
+        // Debounced "invalidate + refresh": safest way to keep paging/search consistent.
+        if (hintRefreshTimerRef.current) clearTimeout(hintRefreshTimerRef.current);
+        hintRefreshTimerRef.current = setTimeout(() => {
+          void refresh("background");
+          // Keep the top picking tabs in sync too (they are independent from the current filter).
+          void refreshPickingTabs();
+        }, 250);
+      }) ??
+      (() => {});
+
+    return () => {
+      off();
+      if (hintRefreshTimerRef.current) {
+        clearTimeout(hintRefreshTimerRef.current);
+        hintRefreshTimerRef.current = null;
+      }
+    };
+  }, [hasToken, opts.active, opts.forcedUpdate, opts.online, refresh, refreshPickingTabs]);
 
   const onLogin = async () => {
     setLoginError(null);
