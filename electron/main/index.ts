@@ -587,6 +587,8 @@ function jwtExpMs(token: string | null): number | null {
   return Number(expSec) * 1000;
 }
 
+type AuthRefreshError = Error & { status?: number };
+
 async function ensureDeviceAccessToken(opts: { force?: boolean } = {}): Promise<string | null> {
   const auth = deviceAuth();
   const refresh = auth.refreshToken;
@@ -614,6 +616,8 @@ async function ensureDeviceAccessToken(opts: { force?: boolean } = {}): Promise<
   return access;
 }
 
+let warehouseRefreshPromise: Promise<string> | null = null;
+
 async function ensureWarehouseAccessToken(opts: { force?: boolean } = {}): Promise<string | null> {
   const auth = warehouseAuth();
   const refresh = auth.refreshToken;
@@ -623,21 +627,38 @@ async function ensureWarehouseAccessToken(opts: { force?: boolean } = {}): Promi
   const stillValid = expMs && expMs - Date.now() > 60_000;
   if (!opts.force && auth.accessToken && stillValid) return auth.accessToken;
 
-  const refreshed = await apiFetchJson("/api/auth/refresh", {
-    method: "POST",
-    json: { refresh_token: refresh },
-    timeoutMs: 8000,
+  // Refresh-token rotation requires single-flight refresh to avoid "Invalid refresh token"
+  // from concurrent refresh attempts.
+  if (warehouseRefreshPromise) return await warehouseRefreshPromise;
+
+  warehouseRefreshPromise = (async () => {
+    const refreshed = await apiFetchJson("/api/auth/refresh", {
+      method: "POST",
+      json: { refresh_token: refresh },
+      timeoutMs: 8000,
+    });
+    if (!refreshed.ok) {
+      const msg =
+        refreshed.json?.message || refreshed.json?.error || refreshed.json?.raw || `warehouse refresh failed (${refreshed.status})`;
+      const err: AuthRefreshError = new Error(String(msg));
+      err.status = refreshed.status;
+      throw err;
+    }
+    const access2 = refreshed.json?.access_token ? String(refreshed.json.access_token) : "";
+    const refresh2 = refreshed.json?.refresh_token ? String(refreshed.json.refresh_token) : "";
+    if (!access2 || !refresh2) {
+      const err: AuthRefreshError = new Error("warehouse refresh: tokens missing");
+      err.status = refreshed.status;
+      throw err;
+    }
+    saveWarehouseAuth({ accessToken: access2, refreshToken: refresh2 });
+    sendStatus();
+    return access2;
+  })().finally(() => {
+    warehouseRefreshPromise = null;
   });
-  if (!refreshed.ok) {
-    const msg = refreshed.json?.message || refreshed.json?.error || refreshed.json?.raw || `warehouse refresh failed (${refreshed.status})`;
-    throw new Error(String(msg));
-  }
-  const access2 = refreshed.json?.access_token ? String(refreshed.json.access_token) : "";
-  const refresh2 = refreshed.json?.refresh_token ? String(refreshed.json.refresh_token) : "";
-  if (!access2 || !refresh2) throw new Error("warehouse refresh: tokens missing");
-  saveWarehouseAuth({ accessToken: access2, refreshToken: refresh2 });
-  sendStatus();
-  return access2;
+
+  return await warehouseRefreshPromise;
 }
 
 async function warehouseRequestJson(
@@ -649,11 +670,15 @@ async function warehouseRequestJson(
     const access = await ensureWarehouseAccessToken();
     if (access) headers.authorization = `Bearer ${access}`;
   } catch (e) {
-    // Session is not refreshable -> force re-login.
-    saveWarehouseAuth({ accessToken: null, refreshToken: null });
-    sendWarehouseHint("auth_expired");
-    sendStatus();
-    throw new Error("Сессия истекла. Войдите заново.");
+    const err = e as AuthRefreshError;
+    // Only force re-login when backend explicitly rejects refresh token.
+    if (err?.status === 401) {
+      saveWarehouseAuth({ accessToken: null, refreshToken: null });
+      sendWarehouseHint("auth_expired");
+      sendStatus();
+      throw new Error("Сессия истекла. Войдите заново.");
+    }
+    throw new Error(`Не удалось обновить сессию: ${String(err?.message || err)}`);
   }
 
   let res = await apiFetchJson(path, { method: opts.method, json: opts.json, timeoutMs: opts.timeoutMs, headers });
@@ -671,10 +696,14 @@ async function warehouseRequestJson(
     });
     return res;
   } catch (e) {
-    saveWarehouseAuth({ accessToken: null, refreshToken: null });
-    sendWarehouseHint("auth_expired");
-    sendStatus();
-    throw new Error("Сессия истекла. Войдите заново.");
+    const err = e as AuthRefreshError;
+    if (err?.status === 401) {
+      saveWarehouseAuth({ accessToken: null, refreshToken: null });
+      sendWarehouseHint("auth_expired");
+      sendStatus();
+      throw new Error("Сессия истекла. Войдите заново.");
+    }
+    throw new Error(`Не удалось обновить сессию: ${String(err?.message || err)}`);
   }
 }
 
