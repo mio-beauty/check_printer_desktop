@@ -1,17 +1,20 @@
 import * as React from "react";
 
-import { CheckCircle2, Clock, Package, Phone, Search, TriangleAlert, User } from "lucide-react";
+import { CheckCircle2, Clock, Loader2, Package, Phone, Search, TriangleAlert, User } from "lucide-react";
+import { useAutoAnimate } from "@formkit/auto-animate/react";
 
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card";
 import { Input } from "../../../components/ui/input";
+import { Skeleton } from "../../../components/ui/skeleton";
 
 import { formatSum, percent } from "../ui";
 import type { OrderItem } from "../types";
 import type { WarehouseQueueState } from "../useWarehouseQueue";
 import { cn } from "../../../lib/utils";
 import { BoxCheckIcon, ProfileFilledIcon } from "@/components/icons";
+import { useTitleBarActivity } from "../../components/titlebar-activity";
 
 
 function StatusFilterChip(props: {
@@ -92,6 +95,35 @@ function ProgressCircle(props: { value: number; label: string }) {
         />
       </svg>
       <div className="text-xs font-semibold text-black">{props.label}</div>
+    </div>
+  );
+}
+
+function OrderCardSkeleton() {
+  return (
+    <div className="rounded-2xl border bg-white p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="space-y-2">
+          <Skeleton className="h-6 w-24" />
+          <Skeleton className="h-4 w-40" />
+        </div>
+        <Skeleton className="h-12 w-12 rounded-full" />
+      </div>
+
+      <div className="mt-4 grid gap-2">
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-4 w-4 rounded" />
+          <Skeleton className="h-4 w-40" />
+        </div>
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-4 w-4 rounded" />
+          <Skeleton className="h-4 w-32" />
+        </div>
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-4 w-4 rounded" />
+          <Skeleton className="h-4 w-28" />
+        </div>
+      </div>
     </div>
   );
 }
@@ -211,6 +243,34 @@ export function WarehouseOrdersPage(props: {
   partialReasons: Array<{ code: string; label: string }>;
 }) {
   const s = props.s;
+  const [listRef] = useAutoAnimate<HTMLDivElement>({ duration: 220, easing: "ease-in-out" });
+  const { setActivity } = useTitleBarActivity();
+
+  React.useEffect(() => {
+    if (s.loading) {
+      setActivity({
+        label: "Загрузка",
+        tone: "bg-[#F6F6F7] text-[#747479]",
+        icon: <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />,
+        title: "Загрузка списка заказов",
+      });
+      return;
+    }
+    if (s.refreshing) {
+      setActivity({
+        label: "Обновление",
+        tone: "bg-[#F6F6F7] text-[#747479]",
+        icon: <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />,
+        title: "Обновление списка заказов",
+      });
+      return;
+    }
+    setActivity(null);
+  }, [s.loading, s.refreshing, setActivity]);
+
+  React.useEffect(() => {
+    return () => setActivity(null);
+  }, [setActivity]);
 
   const headerTitle = s.mode === "problems" ? "Проблемы" : "Очередь заказов";
   const searchPlaceholder =
@@ -340,32 +400,44 @@ export function WarehouseOrdersPage(props: {
         <CardContent className="space-y-3">
           {s.error && <Badge variant="destructive">{s.error}</Badge>}
 
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {s.loading && <div className="text-sm text-muted-foreground">Загрузка…</div>}
-            {!s.loading && s.refreshing && <div className="text-xs text-muted-foreground">Обновление…</div>}
-            {!s.loading && visibleItems.length === 0 && <div className="text-sm text-muted-foreground">Пусто.</div>}
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" ref={listRef}>
+            {s.loading ? (
+              <>
+                {Array.from({ length: 6 }).map((_, idx) => (
+                  <OrderCardSkeleton key={`sk-${idx}`} />
+                ))}
+              </>
+            ) : (
+              <>
+                {visibleItems.length === 0 && <div className="text-sm text-muted-foreground">Пусто.</div>}
 
-            {visibleItems.map((it) => {
-              const primaryCta = it.active_session_id || it.picking_status === "PICKING" ? "Продолжить" : "Начать";
-              const ctaDisabled = props.actionsDisabled;
-              const reasonLabel = it.partial_reason_code
-                ? props.partialReasons.find((r) => r.code === it.partial_reason_code)?.label || it.partial_reason_code
-                : null;
+                {visibleItems.map((it) => {
+                  const primaryCta = it.active_session_id || it.picking_status === "PICKING" ? "Продолжить" : "Начать";
+                  const ctaDisabled = props.actionsDisabled;
+                  const reasonLabel = it.partial_reason_code
+                    ? props.partialReasons.find((r) => r.code === it.partial_reason_code)?.label || it.partial_reason_code
+                    : null;
 
-              return (
-                <OrderCard
-                  key={it.id}
-                  it={it}
-                  mode={s.mode}
-                  reasonLabel={reasonLabel}
-                  forcedUpdate={props.forcedUpdate}
-                  actionsDisabled={ctaDisabled}
-                  onOpen={() => void s.openDetail(it.id)}
-                  onPrimary={s.mode === "queue" ? () => (primaryCta === "Начать" ? void s.pickingStart(it.id) : void s.openDetail(it.id)) : undefined}
-                  primaryLabel={s.mode === "queue" ? primaryCta : null}
-                />
-              );
-            })}
+                  return (
+                    <OrderCard
+                      key={it.id}
+                      it={it}
+                      mode={s.mode}
+                      reasonLabel={reasonLabel}
+                      forcedUpdate={props.forcedUpdate}
+                      actionsDisabled={ctaDisabled}
+                      onOpen={() => void s.openDetail(it.id)}
+                      onPrimary={
+                        s.mode === "queue"
+                          ? () => (primaryCta === "Начать" ? void s.pickingStart(it.id) : void s.openDetail(it.id))
+                          : undefined
+                      }
+                      primaryLabel={s.mode === "queue" ? primaryCta : null}
+                    />
+                  );
+                })}
+              </>
+            )}
           </div>
         </CardContent>
       </Card>

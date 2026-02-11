@@ -1,6 +1,7 @@
 import * as React from "react";
 
 import { Badge, ChevronLeft, ImageOff, Info, RotateCw, ScanLine } from "lucide-react";
+import { useAutoAnimate } from "@formkit/auto-animate/react";
 
 import {
   AlertDialog,
@@ -53,10 +54,29 @@ function ProgressRing(props: { value: number; className?: string }) {
 
 function PickItemThumb(props: { url: string | null | undefined; alt: string; className?: string }) {
   const [state, setState] = React.useState<"idle" | "loading" | "loaded" | "error">("idle");
+  const lastBaseRef = React.useRef<string>("");
 
   React.useEffect(() => {
-    const u = (props.url || "").trim();
-    setState(u ? "loading" : "error");
+    const stripQuery = (u: string) => {
+      const idx = u.indexOf("?");
+      return idx >= 0 ? u.slice(0, idx) : u;
+    };
+
+    const raw = (props.url || "").trim();
+    const base = raw ? stripQuery(raw) : "";
+
+    // Preserve UX: when only the presigned query string changes, don't reset the loader.
+    const prevBase = lastBaseRef.current;
+    lastBaseRef.current = base;
+
+    if (!base) {
+      setState("error");
+      return;
+    }
+
+    if (prevBase && prevBase === base) return;
+
+    setState("loading");
   }, [props.url]);
 
   return (
@@ -225,7 +245,7 @@ function ReadyItemRow(props: {
   return (
     <div
       className={cn(
-        "flex items-top gap-3 border-b border-[#EDEDED] px-4 py-3",
+        "flex w-full items-start gap-3 border-b border-[#EDEDED] px-4 py-3 last:border-0",
         props.highlight ? "bg-violet-50/40" : "bg-white"
       )}
     >
@@ -256,6 +276,8 @@ export function WarehousePickingPage(props: {
   const s = props.s;
   const scanInputRef = React.useRef<HTMLInputElement | null>(null);
   const lastPointerDownAtRef = React.useRef<number>(0);
+  const [toScanListRef] = useAutoAnimate<HTMLDivElement>({ duration: 220, easing: "ease-in-out" });
+  const [readyListRef] = useAutoAnimate<HTMLDivElement>({ duration: 220, easing: "ease-in-out" });
 
   const sessionActive = Boolean(s.selectedId !== null && s.detail?.picking?.is_active);
   const readOnly = s.mode === "problems";
@@ -426,12 +448,50 @@ export function WarehousePickingPage(props: {
   const notScanned = itemsForUi.filter((it) => (it.picked_qty ?? 0) < (it.ordered_qty ?? 0));
   const scanned = itemsForUi.filter((it) => (it.picked_qty ?? 0) >= (it.ordered_qty ?? 0));
 
+  // UX sorting rules:
+  // - "К сканированию": first show multi-qty items that already started scanning (qty > 1 && picked > 0),
+  //   keep relative order as received from backend within groups.
+  // - "Готово к отправке": sort by last scan time desc (most recent scan on top), stable for ties/missing.
+  const notScannedUi = React.useMemo(() => {
+    const startedMulti: typeof notScanned = [];
+    const rest: typeof notScanned = [];
+    for (const it of notScanned) {
+      const ordered = Number(it.ordered_qty) || 0;
+      const picked = Number(it.picked_qty) || 0;
+      if (ordered > 1 && picked > 0) startedMulti.push(it);
+      else rest.push(it);
+    }
+    return [...startedMulti, ...rest];
+  }, [notScanned]);
+
+  const scannedUi = React.useMemo(() => {
+    const tsById: Record<string, string> = { ...(s.lastScanTsByItemId ?? {}) };
+
+    const ev = s.events?.events ?? [];
+    for (const e of ev) {
+      const itemId = e?.pick_item_id ? String(e.pick_item_id) : "";
+      const ts = e?.ts ? String(e.ts) : "";
+      if (!itemId || !ts) continue;
+      const prev = tsById[itemId];
+      if (!prev || Date.parse(ts) > Date.parse(prev)) tsById[itemId] = ts;
+    }
+
+    return scanned
+      .map((it, idx) => {
+        const ts = tsById[String(it.id)] ?? "";
+        const t = ts ? Date.parse(ts) : Number.NEGATIVE_INFINITY;
+        return { it, idx, t };
+      })
+      .sort((a, b) => (b.t !== a.t ? b.t - a.t : a.idx - b.idx))
+      .map((x) => x.it);
+  }, [s.events?.events, s.lastScanTsByItemId, scanned]);
+
   const totalUnitsOrdered = itemsForUi.reduce((sum, it) => sum + (Number(it.ordered_qty) || 0), 0);
   const totalUnitsPicked = itemsForUi.reduce((sum, it) => sum + (Number(it.picked_qty) || 0), 0);
   const overallPct = percent(totalUnitsPicked, totalUnitsOrdered);
 
   const totalPositions = itemsForUi.length;
-  const positionsDone = scanned.length;
+  const positionsDone = scannedUi.length;
   const collectedLabel =
     totalPositions === 0 ? "—" : positionsDone >= totalPositions ? `Все ${totalPositions} позиций` : `${positionsDone} из ${totalPositions} позиций`;
 
@@ -447,12 +507,12 @@ export function WarehousePickingPage(props: {
   const totalSum = s.detail?.order?.order_data?.total ?? null;
 
   const readySum = React.useMemo(() => {
-    if (scanned.length === 0) return 0;
+    if (scannedUi.length === 0) return 0;
 
     let sum = 0;
     let missing = false;
 
-    for (const it of scanned) {
+    for (const it of scannedUi) {
       const msId = it.ms_assortment_id ? String(it.ms_assortment_id) : "";
       const unit = msId ? unitPriceByAssortmentId.get(msId) : undefined;
       const qty = Math.max(0, Math.min(Number(it.picked_qty) || 0, Number(it.ordered_qty) || 0));
@@ -467,7 +527,7 @@ export function WarehousePickingPage(props: {
 
     if (missing) return null;
     return sum;
-  }, [scanned, unitPriceByAssortmentId]);
+  }, [scannedUi, unitPriceByAssortmentId]);
 
   const actionsDisabled = props.offline || props.forcedUpdate || s.scanBusy || s.finishBusy;
 
@@ -610,21 +670,43 @@ export function WarehousePickingPage(props: {
             </div>
 
             <div className="min-h-0 h-full">
-              {itemsForUi.length > 0 && notScanned.length === 0 ? (
+              {s.detailBusy ? (
+                <div className="grid gap-2" ref={toScanListRef}>
+                  {Array.from({ length: 6 }).map((_, idx) => (
+                    <div key={`to-scan-sk-${idx}`} className="flex items-start gap-4 rounded-2xl border border-[#EDEDED] bg-white p-2">
+	                      <Skeleton className="mt-0.5 h-14 w-14 rounded-xl" />
+                      <div className="min-w-0 flex-1 space-y-3 py-1">
+                        <div className="flex items-start justify-between gap-3">
+                          <Skeleton className="h-6 w-56" />
+                          <Skeleton className="h-7 w-24 rounded-lg" />
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <Skeleton className="h-5 w-40" />
+                          <Skeleton className="h-4 w-16" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : itemsForUi.length > 0 && notScanned.length === 0 ? (
                 <div className="flex min-h-[360px] h-full flex-col items-center justify-center gap-3 text-center text-black/60">
                   <div className="grid h-10 w-10 place-items-center rounded-full">
                     <BoxCheckIcon className="h-6 w-6 text-black/60" />
                   </div>
                   <div className="text-sm font-medium">В сборке не осталось товаров</div>
                 </div>
-              ) : notScanned.length ? (
-                <div className="grid gap-2">
-                  {notScanned.map((it) => (
+              ) : notScannedUi.length ? (
+                <div className="grid gap-2" ref={toScanListRef}>
+                  {notScannedUi.map((it) => (
                     <PickItemCard
                       key={it.id}
                       it={it}
                       highlight={s.highlightItemId === it.id}
-                      showRemaining={Number(it.ordered_qty) > 1 && Number(it.picked_qty) >= 1 && Number(it.picked_qty) < Number(it.ordered_qty)}
+                      showRemaining={
+                        Number(it.ordered_qty) > 1 &&
+                        Number(it.picked_qty) >= 1 &&
+                        Number(it.picked_qty) < Number(it.ordered_qty)
+                      }
                       showDots={true}
                     />
                   ))}
@@ -642,11 +724,21 @@ export function WarehousePickingPage(props: {
               <CardTitle className="text-[18px] font-semibold">Готово к отправке</CardTitle>
             </CardHeader>
             <CardContent className="min-h-0 flex-1 overflow-auto p-0 gap-0">
-              <div className="grid gap-0 h-full">
-                {itemsForUi.length > 0 && scanned.length === 0 ? (
+              <div className="flex w-full flex-col gap-0" ref={readyListRef}>
+                {s.detailBusy ? (
+                  Array.from({ length: 5 }).map((_, idx) => (
+                    <div key={`ready-sk-${idx}`} className="flex w-full items-start gap-3 border-b border-[#EDEDED] px-4 py-3 bg-white">
+                      <Skeleton className="h-11 w-11 rounded-md" />
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <Skeleton className="h-4 w-48" />
+                        <Skeleton className="h-3 w-28" />
+                      </div>
+                    </div>
+                  ))
+                ) : itemsForUi.length > 0 && scannedUi.length === 0 ? (
                   <NoScansEmptyState />
                 ) : (
-                  scanned.map((it) => <ReadyItemRow key={it.id} it={it} highlight={s.highlightItemId === it.id} />)
+                  scannedUi.map((it) => <ReadyItemRow key={it.id} it={it} highlight={s.highlightItemId === it.id} />)
                 )}
               </div>
             </CardContent>

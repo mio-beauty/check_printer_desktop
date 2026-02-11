@@ -84,7 +84,7 @@ export function WarehousePickingTabs(props: {
   };
 
   return (
-    <div className="w-full overflow-hidden border-b border-[#EDEDED] bg-white text-black">
+    <div className="sticky top-0 z-40 w-full overflow-hidden border-b border-[#EDEDED] bg-white text-black">
       <Tabs
         value={props.tabValue}
         onValueChange={(v) => {

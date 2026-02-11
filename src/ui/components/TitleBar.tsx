@@ -12,6 +12,7 @@ export type ConnectionState = {
 
 type TitleBarProps = {
   connectionState: ConnectionState;
+  activityState?: ConnectionState | null;
   appVersion?: string;
   onMinimize: () => void;
   onToggleMaximize: () => void;
@@ -20,11 +21,15 @@ type TitleBarProps = {
 
 export function TitleBar({
   connectionState,
+  activityState = null,
   appVersion,
   onMinimize,
   onToggleMaximize,
   onClose,
 }: TitleBarProps) {
+  const badge = activityState ?? connectionState;
+  const badgeTitle = activityState ? `${activityState.title ?? ""}\n${connectionState.title ?? ""}`.trim() : connectionState.title;
+
   return (
     <div
       className="sticky top-0 z-50 flex items-center justify-between bg-background h-8 border-b border-[#ECECEE]"
@@ -68,15 +73,17 @@ export function TitleBar({
           </p>
         )}
       </div>
-      <div
-        className={cn(
-          "flex items-center gap-1 rounded-[6px] px-1.5 h-6 text-sm font-normal tracking-wide",
-          connectionState.tone,
-        )}
-        title={connectionState.title}
-      >
-        <span className="flex h-4 w-4 items-center justify-center text-current">{connectionState.icon}</span>
-        <span className="leading-[16px]">{connectionState.label}</span>
+      <div className="flex items-center gap-2">
+        <div
+          className={cn(
+            "flex items-center gap-1 rounded-[6px] px-1.5 h-6 text-sm font-normal tracking-wide",
+            badge.tone,
+          )}
+          title={badgeTitle}
+        >
+          <span className="flex h-4 w-4 items-center justify-center text-current">{badge.icon}</span>
+          <span className="leading-[16px]">{badge.label}</span>
+        </div>
       </div>
       <div className="flex items-center gap-1" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
         <Button variant="ghost" size="icon" onClick={onMinimize} aria-label="Свернуть" className="rounded-none">

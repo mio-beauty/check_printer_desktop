@@ -4,6 +4,7 @@ import { AppSidebar } from "./Layout/app-sidebar";
 import type { ConnectionState } from "./TitleBar";
 import type { PrinterStatus, UpdateState } from "../types";
 import { SidebarProvider } from "@/components/ui/sidebar";
+import { TitleBarActivityProvider, type TitleBarActivityState } from "./titlebar-activity";
 
 type LayoutProps = {
   connectionState: ConnectionState;
@@ -31,6 +32,7 @@ export function Layout({
   children,
 }: LayoutProps) {
   void forcedUpdate;
+  const [activityState, setActivityState] = React.useState<TitleBarActivityState>(null);
 
   const handleLogout = React.useCallback(async () => {
     try {
@@ -44,6 +46,7 @@ export function Layout({
     <SidebarProvider>
       <AppLayout
         connectionState={connectionState}
+        activityState={activityState}
         appVersion={status?.appVersion}
         update={update}
         forcedUpdate={forcedUpdate}
@@ -67,7 +70,9 @@ export function Layout({
           ) : undefined
         }
       >
-        {children}
+        <TitleBarActivityProvider value={{ activity: activityState, setActivity: setActivityState }}>
+          {children}
+        </TitleBarActivityProvider>
       </AppLayout>
     </SidebarProvider>
   );

@@ -19,6 +19,7 @@ export function useWarehouseQueue(opts: {
 }) {
   const hasToken = Boolean(opts.auth?.hasToken);
   const hintRefreshTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const detailSoftRefreshTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [mode, setMode] = React.useState<"queue" | "problems">("queue");
   const [phone, setPhone] = React.useState("");
@@ -50,6 +51,7 @@ export function useWarehouseQueue(opts: {
   const [scanError, setScanError] = React.useState<string | null>(null);
   const [pendingScan, setPendingScan] = React.useState<{ code: string; ts: string } | null>(null);
   const [lastScan, setLastScan] = React.useState<{ code: string; itemId: string; ts: string } | null>(null);
+  const [lastScanTsByItemId, setLastScanTsByItemId] = React.useState<Record<string, string>>({});
   const [highlightItemId, setHighlightItemId] = React.useState<string | null>(null);
   const startOnScanRef = React.useRef<Promise<void> | null>(null);
 
@@ -155,6 +157,8 @@ export function useWarehouseQueue(opts: {
       setFinishError(null);
       setEvents(null);
       setEventsError(null);
+      setLastScan(null);
+      setLastScanTsByItemId({});
       if (!hasToken) return;
       setDetailBusy(true);
       try {
@@ -179,6 +183,112 @@ export function useWarehouseQueue(opts: {
       }
     },
     [hasToken],
+  );
+
+  const softRefreshDetail = React.useCallback(
+    async (id: number) => {
+      if (!hasToken) return;
+      if (selectedId !== id) return;
+      const api = window.checkPrinter;
+      if (!api?.warehouseOrderDetail) return;
+
+      const stripQuery = (u: unknown) => {
+        const s = String(u ?? "");
+        const idx = s.indexOf("?");
+        return idx >= 0 ? s.slice(0, idx) : s;
+      };
+
+      try {
+        const json = (await api.warehouseOrderDetail(id)) as OrderDetailResponse;
+        if (selectedId !== id) return;
+        setDetail((prev) => {
+          if (!prev) return json;
+
+          if (!json?.picking) return { ...prev, ...json };
+
+          const shouldKeepPresignedUrl = (prevUrl: unknown, nextUrl: unknown) => {
+            const prevBase = stripQuery(prevUrl);
+            const nextBase = stripQuery(nextUrl);
+            return Boolean(prevBase && nextBase && prevBase === nextBase);
+          };
+
+          const prevItems = prev.picking?.pick_items ?? prev.picking?.items ?? null;
+          const nextItems = json.picking?.pick_items ?? json.picking?.items ?? null;
+          if (!Array.isArray(prevItems) || !Array.isArray(nextItems)) return json;
+
+          const prevById = new Map(prevItems.map((it) => [String(it?.id ?? ""), it] as const));
+          const mergedItems = nextItems.map((nextIt) => {
+            const prevIt = prevById.get(String(nextIt?.id ?? ""));
+            if (!prevIt) return nextIt;
+
+            const prevUrl = (prevIt as any).main_image_mini_url;
+            const nextUrl = (nextIt as any).main_image_mini_url;
+            const keepUrl = shouldKeepPresignedUrl(prevUrl, nextUrl);
+            const finalUrl = keepUrl ? prevUrl : nextUrl;
+
+            const same =
+              (prevIt as any).picked_qty === (nextIt as any).picked_qty &&
+              (prevIt as any).ordered_qty === (nextIt as any).ordered_qty &&
+              (prevIt as any).name === (nextIt as any).name &&
+              (prevIt as any).sku === (nextIt as any).sku &&
+              (prevIt as any).ms_assortment_id === (nextIt as any).ms_assortment_id &&
+              stripQuery((prevIt as any).main_image_mini_url) === stripQuery(finalUrl);
+
+            if (same && (prevIt as any).main_image_mini_url === finalUrl) return prevIt;
+
+            return {
+              ...prevIt,
+              ...nextIt,
+              ...(finalUrl ? { main_image_mini_url: finalUrl } : { main_image_mini_url: null }),
+            };
+          });
+
+          const pickItemsUnchanged =
+            mergedItems.length === prevItems.length && mergedItems.every((it, idx) => it === prevItems[idx]);
+
+          const nextPicking = {
+            ...(prev.picking as any),
+            ...(json.picking as any),
+            pick_items: pickItemsUnchanged ? prevItems : mergedItems,
+          };
+
+          const nextOrder =
+            prev.order &&
+            json.order &&
+            prev.order.id === json.order.id &&
+            prev.order.number === json.order.number &&
+            prev.order.order_id === json.order.order_id &&
+            prev.order.printed === json.order.printed &&
+            prev.order.print_status === json.order.print_status &&
+            prev.order.print_error === json.order.print_error
+              ? prev.order
+              : json.order;
+
+          const prevPicking = prev.picking as any;
+          const jsonPicking = json.picking as any;
+          const progressSame =
+            Number(prevPicking?.progress?.picked ?? 0) === Number(jsonPicking?.progress?.picked ?? 0) &&
+            Number(prevPicking?.progress?.ordered ?? 0) === Number(jsonPicking?.progress?.ordered ?? 0);
+          const pickingScalarsSame =
+            prevPicking?.id === jsonPicking?.id &&
+            prevPicking?.status === jsonPicking?.status &&
+            Boolean(prevPicking?.is_active) === Boolean(jsonPicking?.is_active) &&
+            String(prevPicking?.started_at ?? "") === String(jsonPicking?.started_at ?? "") &&
+            String(prevPicking?.finished_at ?? "") === String(jsonPicking?.finished_at ?? "") &&
+            String(prevPicking?.partial_reason_code ?? "") === String(jsonPicking?.partial_reason_code ?? "") &&
+            String(prevPicking?.partial_reason_comment ?? "") === String(jsonPicking?.partial_reason_comment ?? "") &&
+            progressSame;
+
+          // If nothing actually changed, keep structural sharing to avoid UI flicker.
+          if (nextOrder === prev.order && pickItemsUnchanged && pickingScalarsSame) return prev;
+
+          return { ...prev, ...json, order: nextOrder, picking: nextPicking };
+        });
+      } catch {
+        // ignore: keep current UI state, optimistic updates are applied during scanning
+      }
+    },
+    [hasToken, selectedId],
   );
 
   const pickingStart = React.useCallback(
@@ -321,12 +431,17 @@ export function useWarehouseQueue(opts: {
               },
             };
           });
-          setLastScan({ code: clean, itemId, ts: new Date().toISOString() });
+          const nowIso = new Date().toISOString();
+          setLastScan({ code: clean, itemId, ts: nowIso });
+          setLastScanTsByItemId((prev) => ({ ...prev, [itemId]: nowIso }));
           setHighlightItemId(itemId);
           setTimeout(() => setHighlightItemId((cur) => (cur === itemId ? null : cur)), 1500);
         }
         // Подтянуть истинное состояние (на случай конкуренции/пересканов) — но без блокировок UI.
-        void openDetail(queueId);
+        if (detailSoftRefreshTimerRef.current) clearTimeout(detailSoftRefreshTimerRef.current);
+        detailSoftRefreshTimerRef.current = setTimeout(() => {
+          void softRefreshDetail(queueId);
+        }, 30000);
       } catch (e) {
         setScanError(`Код ${JSON.stringify(clean)}: ${String(e)}`);
       } finally {
@@ -334,8 +449,17 @@ export function useWarehouseQueue(opts: {
         setPendingScan(null);
       }
     },
-    [ensurePickingStarted, openDetail, opts.forcedUpdate, selectedId],
+    [ensurePickingStarted, opts.forcedUpdate, selectedId, softRefreshDetail],
   );
+
+  React.useEffect(() => {
+    return () => {
+      if (detailSoftRefreshTimerRef.current) {
+        clearTimeout(detailSoftRefreshTimerRef.current);
+        detailSoftRefreshTimerRef.current = null;
+      }
+    };
+  }, []);
 
   React.useEffect(() => {
     // Авто-завершение (с подтверждением): когда всё собрано, показываем confirm один раз на сессию.
@@ -423,6 +547,8 @@ export function useWarehouseQueue(opts: {
     setData(null);
     setSelectedId(null);
     setDetail(null);
+    setLastScan(null);
+    setLastScanTsByItemId({});
     try {
       await window.checkPrinter?.warehouseLogout?.();
     } catch (e) {
@@ -473,6 +599,7 @@ export function useWarehouseQueue(opts: {
     scanError,
     pendingScan,
     lastScan,
+    lastScanTsByItemId,
     highlightItemId,
     pickingScan,
     reasons,

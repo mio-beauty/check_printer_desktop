@@ -155,7 +155,7 @@ export function SettingsPage(props: {
               className="relative flex w-full items-start text-left transition hover:bg-muted"
               aria-current="page"
             >
-              <div className="flex p-4 pr-2 items-top text-foreground">
+              <div className="flex p-4 pr-2 items-start text-foreground">
                 <PrinterIcon className="h-5 w-5" />
               </div>
               <div className="min-w-0 py-4 w-full">

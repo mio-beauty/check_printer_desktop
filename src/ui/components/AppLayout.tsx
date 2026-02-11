@@ -5,6 +5,7 @@ import type { UpdateState } from "../types";
 
 type AppLayoutProps = {
   connectionState: ConnectionState;
+  activityState?: ConnectionState | null;
   appVersion?: string;
   update?: UpdateState;
   forcedUpdate?: boolean;
@@ -18,6 +19,7 @@ type AppLayoutProps = {
 
 export function AppLayout({
   connectionState,
+  activityState = null,
   appVersion,
   update,
   forcedUpdate = false,
@@ -46,6 +48,7 @@ export function AppLayout({
       <div className="flex h-full flex-col">
         <TitleBar
           connectionState={connectionState}
+          activityState={activityState}
           appVersion={appVersion}
           onMinimize={onMinimize}
           onToggleMaximize={onToggleMaximize}
