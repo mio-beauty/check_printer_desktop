@@ -96,6 +96,7 @@ export function SettingsPage(props: {
         host: "",
         port: 9100,
         encoding: "cp866",
+        codepage: 17,
         name: "Mio beauty Склад принтер",
       }
     );
@@ -272,6 +273,28 @@ export function SettingsPage(props: {
                   <option value="cp1251">cp1251</option>
                   <option value="utf-8">utf-8</option>
                 </Select>
+
+                <div className="mt-2 grid gap-2">
+                  <Label>Codepage (ESC t)</Label>
+                  <Select
+                    value={String(props.settings?.printer?.codepage ?? 17)}
+                    onChange={(e) =>
+                      props.setSettings((p) => {
+                        if (!p) return null;
+                        const printer = ensurePrinter(p);
+                        const next = e.target.value ? Number.parseInt(e.target.value, 10) : 17;
+                        return { ...p, printer: { ...printer, codepage: Number.isFinite(next) ? next : 17 } };
+                      })
+                    }
+                  >
+                    <option value="17">17 (recommended)</option>
+                    <option value="6">6</option>
+                    <option value="7">7</option>
+                    <option value="16">16</option>
+                    <option value="22">22</option>
+                  </Select>
+                  <div className="text-xs text-muted-foreground">Если вместо кириллицы “кракозябры” — поменяйте codepage и сделайте тестовую печать.</div>
+                </div>
                 <div className="text-xs text-muted-foreground">Кодировка текста, по которой принтер понимает символы</div>
               </div>
               <div className="grid gap-2">

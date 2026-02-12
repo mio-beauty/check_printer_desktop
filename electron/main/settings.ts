@@ -21,6 +21,7 @@ export type Settings = {
     host: string;
     port: number;
     encoding: string;
+    codepage?: number | null;
     name: string;
     mode?: "lan" | "usb" | "lan_then_usb";
     usbPrinterName?: string | null;
@@ -47,6 +48,9 @@ function defaultSettings(): Settings {
   const port = Number.isFinite(portParsed) && portParsed > 0 ? portParsed : 9100;
 
   const encoding = (process.env.PRINTER_ENCODING || "cp866").trim() || "cp866";
+  const codepageEnv = (process.env.PRINTER_CODEPAGE || "").trim();
+  const codepageParsed = codepageEnv ? Number.parseInt(codepageEnv, 10) : NaN;
+  const codepage = Number.isFinite(codepageParsed) ? codepageParsed : 17;
   const name = (process.env.PRINTER_NAME || "").trim() || "Mio beauty Склад принтер";
   const warehouseName = (process.env.WAREHOUSE_NAME || "").trim() || "Sklad";
 
@@ -56,7 +60,7 @@ function defaultSettings(): Settings {
     clientId: crypto.randomUUID(),
     deviceAuth: { printerId: null, accessToken: null, refreshToken: null },
     warehouseAuth: { phone: null, accessToken: null, refreshToken: null },
-    printer: { host, port, encoding, name, mode: "lan_then_usb", usbPrinterName: null },
+    printer: { host, port, encoding, codepage, name, mode: "lan_then_usb", usbPrinterName: null },
     warehouse: { name: warehouseName, lat: null, lon: null },
   };
 }
@@ -92,6 +96,10 @@ export function loadSettings(): Settings {
         host: String(parsed?.printer?.host || defaults.printer.host),
         port: Number(parsed?.printer?.port || defaults.printer.port),
         encoding: String(parsed?.printer?.encoding || defaults.printer.encoding),
+        codepage:
+          parsed?.printer?.codepage === null || parsed?.printer?.codepage === undefined
+            ? (defaults.printer.codepage ?? 17)
+            : Number(parsed.printer.codepage),
         name: String(parsed?.printer?.name || defaults.printer.name),
         mode: (parsed?.printer?.mode === "lan" || parsed?.printer?.mode === "usb" || parsed?.printer?.mode === "lan_then_usb")
           ? parsed.printer.mode
@@ -135,6 +143,10 @@ export function saveSettings(partial: Partial<Settings>): Settings {
       host: partial.printer?.host !== undefined ? String(partial.printer.host) : current.printer.host,
       port: partial.printer?.port !== undefined ? Number(partial.printer.port) : current.printer.port,
       encoding: partial.printer?.encoding !== undefined ? String(partial.printer.encoding) : current.printer.encoding,
+      codepage:
+        partial.printer?.codepage !== undefined
+          ? (partial.printer.codepage === null ? null : Number(partial.printer.codepage))
+          : (current.printer.codepage ?? 17),
       name: partial.printer?.name !== undefined ? String(partial.printer.name) : current.printer.name,
       mode:
         partial.printer?.mode !== undefined

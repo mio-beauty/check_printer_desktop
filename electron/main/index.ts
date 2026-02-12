@@ -328,7 +328,7 @@ function ensureSettings(): Settings {
 async function sendToConfiguredPrinter(rawText: string): Promise<void> {
   const s = ensureSettings();
   const mode = s.printer.mode || "lan_then_usb";
-  const job = buildEscPosJob(rawText, { encoding: s.printer.encoding });
+  const job = buildEscPosJob(rawText, { encoding: s.printer.encoding, codepage: s.printer.codepage ?? 17 });
 
   const lanCheckedAtMs = printerReachability.checkedAt ? Date.parse(printerReachability.checkedAt) : 0;
   const lanFresh = Boolean(lanCheckedAtMs && Date.now() - lanCheckedAtMs < 12_000);

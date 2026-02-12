@@ -15,6 +15,7 @@ export type PrinterStatus = {
     host: string | null;
     port: number;
     encoding: string;
+    codepage?: number | null;
     name: string;
     mode?: "lan" | "usb" | "lan_then_usb";
     usbPrinterName?: string | null;
@@ -50,6 +51,7 @@ export type Settings = {
     host: string;
     port: number;
     encoding: string;
+    codepage?: number | null;
     name: string;
     mode?: "lan" | "usb" | "lan_then_usb";
     usbPrinterName?: string | null;
