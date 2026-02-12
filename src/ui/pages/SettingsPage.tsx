@@ -201,21 +201,43 @@ export function SettingsPage(props: {
           </div>
 
           <div className="p-0">
+            <div className="grid gap-2 px-4">
+              <Label>Название принтера</Label>
+              <Input
+                value={props.settings?.printer?.name ?? ""}
+                onChange={(e) =>
+                  props.setSettings((p) => {
+                    if (!p) return null;
+                    const printer = ensurePrinter(p);
+                    return { ...p, printer: { ...printer, name: e.target.value } };
+                  })
+                }
+                placeholder="Придумайте название принтера"
+              />
+              <div className="text-xs text-muted-foreground">Это название будет использоваться для обозначения принтера</div>
+            </div>
             <div className="grid gap-6 lg:grid-cols-2 p-4">
-              <div className="grid gap-2">
-                <Label>Название принтера</Label>
-                <Input
-                  value={props.settings?.printer?.name ?? ""}
+
+              <div className="mt-2 grid gap-2">
+                <Label>Codepage (ESC t)</Label>
+                <Select
+                  value={String(props.settings?.printer?.codepage ?? 17)}
                   onChange={(e) =>
                     props.setSettings((p) => {
                       if (!p) return null;
                       const printer = ensurePrinter(p);
-                      return { ...p, printer: { ...printer, name: e.target.value } };
+                      const next = e.target.value ? Number.parseInt(e.target.value, 10) : 17;
+                      return { ...p, printer: { ...printer, codepage: Number.isFinite(next) ? next : 17 } };
                     })
                   }
-                  placeholder="Придумайте название принтера"
-                />
-                <div className="text-xs text-muted-foreground">Это название будет использоваться для обозначения принтера</div>
+                >
+                  <option value="17">17 (recommended)</option>
+                  <option value="6">6</option>
+                  <option value="7">7</option>
+                  <option value="16">16</option>
+                  <option value="22">22</option>
+                </Select>
+                <div className="text-xs text-muted-foreground">Если вместо кириллицы “кракозябры” — поменяйте codepage и сделайте тестовую печать.</div>
               </div>
 
               <div className="grid gap-2">
@@ -274,27 +296,7 @@ export function SettingsPage(props: {
                   <option value="utf-8">utf-8</option>
                 </Select>
 
-                <div className="mt-2 grid gap-2">
-                  <Label>Codepage (ESC t)</Label>
-                  <Select
-                    value={String(props.settings?.printer?.codepage ?? 17)}
-                    onChange={(e) =>
-                      props.setSettings((p) => {
-                        if (!p) return null;
-                        const printer = ensurePrinter(p);
-                        const next = e.target.value ? Number.parseInt(e.target.value, 10) : 17;
-                        return { ...p, printer: { ...printer, codepage: Number.isFinite(next) ? next : 17 } };
-                      })
-                    }
-                  >
-                    <option value="17">17 (recommended)</option>
-                    <option value="6">6</option>
-                    <option value="7">7</option>
-                    <option value="16">16</option>
-                    <option value="22">22</option>
-                  </Select>
-                  <div className="text-xs text-muted-foreground">Если вместо кириллицы “кракозябры” — поменяйте codepage и сделайте тестовую печать.</div>
-                </div>
+
                 <div className="text-xs text-muted-foreground">Кодировка текста, по которой принтер понимает символы</div>
               </div>
               <div className="grid gap-2">
@@ -351,130 +353,132 @@ export function SettingsPage(props: {
               </div>
             </div>
 
-            <div className="px-4 pb-2">
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-background p-4">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="text-[16px] font-medium leading-[20px]">Подключение к принтеру</div>
-                    {reachLabel ? (
-                      <Badge variant="secondary" className={`py-1 px-2 rounded-md text-[13px] leading-[16px] hover:${reachTone} ${reachTone}`}>
-                        {reachLabel}
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary" className="py-1 px-2 rounded-md text-[13px] leading-[16px]">
-                        —
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="mt-1 text-[13px] leading-[16px] text-muted-foreground">
-                    {reachDetails ? (
-                      <>
-                        Последняя проверка: <span className="font-mono">{reachDetails.checkedLabel}</span>
-                        {reachDetails.reason ? (
-                          <>
-                            {" "}
-                            · Причина: <span className="font-mono">{reachDetails.reason}</span>
-                          </>
-                        ) : null}
-                      </>
-                    ) : (
-                      "—"
-                    )}
-                  </div>
-                  {props.settings?.printer?.host ? (
-                    <div className="mt-1 text-[12px] leading-[16px] text-muted-foreground">
-                      Быстрая проверка в PowerShell:{" "}
-                      <span className="font-mono">
-                        Test-NetConnection {props.settings.printer.host} -Port {props.settings.printer.port}
-                      </span>
+            <div className="flex p-4 gap-6 w-full">
+              <div className="w-full">
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-background p-4">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="text-[16px] font-medium leading-[20px]">Подключение к принтеру</div>
+                      {reachLabel ? (
+                        <Badge variant="secondary" className={`py-1 px-2 rounded-md text-[13px] leading-[16px] hover:${reachTone} ${reachTone}`}>
+                          {reachLabel}
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="py-1 px-2 rounded-md text-[13px] leading-[16px]">
+                          —
+                        </Badge>
+                      )}
                     </div>
-                  ) : null}
-                </div>
+                    <div className="mt-1 text-[13px] leading-[16px] text-muted-foreground">
+                      {reachDetails ? (
+                        <>
+                          Последняя проверка: <span className="font-mono">{reachDetails.checkedLabel}</span>
+                          {reachDetails.reason ? (
+                            <>
+                              {" "}
+                              · Причина: <span className="font-mono">{reachDetails.reason}</span>
+                            </>
+                          ) : null}
+                        </>
+                      ) : (
+                        "—"
+                      )}
+                    </div>
+                    {/* {props.settings?.printer?.host ? (
+                      <div className="mt-1 text-[12px] leading-[16px] text-muted-foreground">
+                        Быстрая проверка в PowerShell:{" "}
+                        <span className="font-mono">
+                          Test-NetConnection {props.settings.printer.host} -Port {props.settings.printer.port}
+                        </span>
+                      </div>
+                    ) : null} */}
+                  </div>
 
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    disabled={probeBusy || props.forcedUpdate}
-                    onClick={async () => {
-                      if (!window.checkPrinter?.printerProbe) {
-                        alert("printerProbe недоступен (нужна пересборка preload/electron).");
-                        return;
-                      }
-                      setProbeBusy(true);
-                      try {
-                        await window.checkPrinter.printerProbe();
-                      } catch (e) {
-                        alert(`Ошибка проверки принтера: ${String(e)}`);
-                      } finally {
-                        setProbeBusy(false);
-                      }
-                    }}
-                  >
-                    {probeBusy ? "Проверяем..." : "Проверить сейчас"}
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      disabled={probeBusy || props.forcedUpdate}
+                      onClick={async () => {
+                        if (!window.checkPrinter?.printerProbe) {
+                          alert("printerProbe недоступен (нужна пересборка preload/electron).");
+                          return;
+                        }
+                        setProbeBusy(true);
+                        try {
+                          await window.checkPrinter.printerProbe();
+                        } catch (e) {
+                          alert(`Ошибка проверки принтера: ${String(e)}`);
+                        } finally {
+                          setProbeBusy(false);
+                        }
+                      }}
+                    >
+                      {probeBusy ? "Проверяем..." : "Проверить сейчас"}
+                    </Button>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="px-4 pb-2">
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-background p-4">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="text-[16px] font-medium leading-[20px]">USB-принтер</div>
-                    {usbReachLabel ? (
-                      <Badge variant="secondary" className={`py-1 px-2 rounded-md text-[13px] leading-[16px] hover:${usbReachTone} ${usbReachTone}`}>
-                        {usbReachLabel}
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary" className="py-1 px-2 rounded-md text-[13px] leading-[16px]">
-                        —
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="mt-1 text-[13px] leading-[16px] text-muted-foreground">
-                    {usbReachDetails ? (
-                      <>
-                        Последняя проверка: <span className="font-mono">{usbReachDetails.checkedLabel}</span>
-                        {usbReachDetails.reason ? (
-                          <>
-                            {" "}
-                            · Причина: <span className="font-mono">{usbReachDetails.reason}</span>
-                          </>
-                        ) : null}
-                      </>
-                    ) : (
-                      "—"
-                    )}
-                  </div>
-                  {props.settings?.printer?.usbPrinterName ? (
-                    <div className="mt-1 text-[12px] leading-[16px] text-muted-foreground">
-                      Выбран: <span className="font-mono">{props.settings.printer.usbPrinterName}</span>
+              <div className="w-full">
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-background p-4">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="text-[16px] font-medium leading-[20px]">USB-принтер</div>
+                      {usbReachLabel ? (
+                        <Badge variant="secondary" className={`py-1 px-2 rounded-md text-[13px] leading-[16px] hover:${usbReachTone} ${usbReachTone}`}>
+                          {usbReachLabel}
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="py-1 px-2 rounded-md text-[13px] leading-[16px]">
+                          —
+                        </Badge>
+                      )}
                     </div>
-                  ) : null}
-                </div>
+                    <div className="mt-1 text-[13px] leading-[16px] text-muted-foreground">
+                      {usbReachDetails ? (
+                        <>
+                          Последняя проверка: <span className="font-mono">{usbReachDetails.checkedLabel}</span>
+                          {usbReachDetails.reason ? (
+                            <>
+                              {" "}
+                              · Причина: <span className="font-mono">{usbReachDetails.reason}</span>
+                            </>
+                          ) : null}
+                        </>
+                      ) : (
+                        "—"
+                      )}
+                    </div>
+                    {props.settings?.printer?.usbPrinterName ? (
+                      <div className="mt-1 text-[12px] leading-[16px] text-muted-foreground">
+                        Выбран: <span className="font-mono">{props.settings.printer.usbPrinterName}</span>
+                      </div>
+                    ) : null}
+                  </div>
 
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={usbProbeBusy || props.forcedUpdate}
-                    onClick={async () => {
-                      if (!window.checkPrinter?.usbProbe) {
-                        alert("usbProbe недоступен (нужна пересборка preload/electron).");
-                        return;
-                      }
-                      setUsbProbeBusy(true);
-                      try {
-                        await window.checkPrinter.usbProbe();
-                      } catch (e) {
-                        alert(`Ошибка проверки USB-принтера: ${String(e)}`);
-                      } finally {
-                        setUsbProbeBusy(false);
-                      }
-                    }}
-                  >
-                    {usbProbeBusy ? "Проверяем..." : "Проверить USB сейчас"}
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={usbProbeBusy || props.forcedUpdate}
+                      onClick={async () => {
+                        if (!window.checkPrinter?.usbProbe) {
+                          alert("usbProbe недоступен (нужна пересборка preload/electron).");
+                          return;
+                        }
+                        setUsbProbeBusy(true);
+                        try {
+                          await window.checkPrinter.usbProbe();
+                        } catch (e) {
+                          alert(`Ошибка проверки USB-принтера: ${String(e)}`);
+                        } finally {
+                          setUsbProbeBusy(false);
+                        }
+                      }}
+                    >
+                      {usbProbeBusy ? "Проверяем..." : "Проверить USB сейчас"}
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
