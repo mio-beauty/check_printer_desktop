@@ -5,6 +5,7 @@ export type AppStatus = {
   connected: boolean;
   joined: boolean;
   joinError: string | null;
+  warehouseRealtime?: { connected: boolean; joined: boolean; joinError: string | null };
   backendUrl: string;
   backend?: StatusBackend;
   appVersion?: string;

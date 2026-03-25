@@ -21,6 +21,8 @@ let socket: Socket | null = null;
 let settings: Settings | null = null;
 let joined = false;
 let joinError: string | null = null;
+let warehouseJoined = false;
+let warehouseJoinError: string | null = null;
 let updateAvailable: { forced: boolean; message: string } | null = null;
 let updateDownloading = false;
 let updateError: string | null = null;
@@ -434,6 +436,11 @@ function sendStatus() {
     connected: Boolean(socket?.connected),
     joined,
     joinError,
+    warehouseRealtime: {
+      connected: Boolean(socket?.connected),
+      joined: warehouseJoined,
+      joinError: warehouseJoinError,
+    },
     backendUrl: s.backendUrl,
     backend: {
       httpOk: backendHttp.ok,
@@ -707,6 +714,145 @@ async function warehouseRequestJson(
   }
 }
 
+function nextWarehouseRequestId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+async function joinWarehouseSocket() {
+  if (updateAvailable?.forced) return;
+  if (!socket?.connected) {
+    warehouseJoined = false;
+    warehouseJoinError = null;
+    sendStatus();
+    return;
+  }
+
+  const auth = warehouseAuth();
+  if (!auth.accessToken && !auth.refreshToken) {
+    warehouseJoined = false;
+    warehouseJoinError = null;
+    sendStatus();
+    return;
+  }
+
+  try {
+    const access = await ensureWarehouseAccessToken();
+    if (!access) {
+      warehouseJoined = false;
+      warehouseJoinError = "access_token_missing";
+      sendStatus();
+      return;
+    }
+
+    socket.emit("join", {
+      room: "warehouse_user",
+      access_token: access,
+      request_id: nextWarehouseRequestId("warehouse-join"),
+    });
+  } catch (e) {
+    const err = e as AuthRefreshError;
+    if (err?.status === 401) {
+      saveWarehouseAuth({ accessToken: null, refreshToken: null });
+      sendWarehouseHint("auth_expired");
+      warehouseJoined = false;
+      warehouseJoinError = "auth_expired";
+      sendStatus();
+      return;
+    }
+
+    warehouseJoined = false;
+    warehouseJoinError = String(err?.message || err);
+    log("warn", `Warehouse realtime join failed: ${warehouseJoinError}`);
+    sendStatus();
+  }
+}
+
+function leaveWarehouseSocket() {
+  warehouseJoined = false;
+  warehouseJoinError = null;
+  try {
+    socket?.emit("warehouse:leave");
+  } catch {
+    // ignore
+  }
+  sendStatus();
+}
+
+async function warehouseSocketRequest(event: string, payload: Record<string, any> = {}, timeoutMs = 4000): Promise<any> {
+  if (!socket?.connected) throw new Error("warehouse realtime disconnected");
+
+  const access = await ensureWarehouseAccessToken();
+  if (!access) throw new Error("warehouse access token missing");
+
+  return await new Promise((resolve, reject) => {
+    const s: any = socket;
+    s.timeout(timeoutMs).emit(
+      event,
+      {
+        ...payload,
+        access_token: access,
+        request_id: nextWarehouseRequestId(event.replace(/[^a-z0-9]+/gi, "-").toLowerCase()),
+      },
+      (err: unknown, ack?: { ok?: boolean; data?: any; message?: string; status?: number }) => {
+        if (err) {
+          const error: AuthRefreshError = new Error("warehouse realtime timeout");
+          error.status = 0;
+          reject(error);
+          return;
+        }
+        if (!ack?.ok) {
+          const error: AuthRefreshError = new Error(String(ack?.message || "warehouse realtime request failed"));
+          error.status = ack?.status;
+          reject(error);
+          return;
+        }
+        resolve(ack.data);
+      },
+    );
+  });
+}
+
+async function warehouseActionRequest(opts: {
+  label: string;
+  event: string;
+  payload?: Record<string, any>;
+  path: string;
+  body?: any;
+  timeoutMs?: number;
+  httpTimeoutMs?: number;
+}) {
+  if (socket?.connected) {
+    try {
+      return await warehouseSocketRequest(opts.event, opts.payload || {}, opts.timeoutMs ?? 4000);
+    } catch (e) {
+      const err = e as AuthRefreshError;
+      if (err?.status === 401) {
+        saveWarehouseAuth({ accessToken: null, refreshToken: null });
+        warehouseJoined = false;
+        warehouseJoinError = "auth_expired";
+        sendWarehouseHint("auth_expired");
+        sendStatus();
+        throw new Error("Сессия истекла. Войдите заново.");
+      }
+      if (typeof err?.status === "number" && err.status > 0) {
+        throw new Error(String(err.message || err));
+      }
+      log("warn", `${opts.label} realtime failed, fallback to HTTP: ${String(err?.message || err)}`);
+    }
+  }
+
+  const res = await warehouseRequestJson(opts.path, {
+    method: "POST",
+    json: opts.body,
+    timeoutMs: opts.httpTimeoutMs ?? 12000,
+  });
+  if (!res.ok) {
+    const msg = res.json?.message || `${opts.label} failed (${res.status})`;
+    throw new Error(String(msg));
+  }
+  return res.json;
+}
+
 function configureAutoUpdater() {
   if (!autoUpdater || typeof autoUpdater.checkForUpdates !== "function") {
     updateError = "autoUpdater недоступен (electron-updater не загрузился)";
@@ -833,6 +979,8 @@ function connectSocket() {
     log("info", `Socket.IO подключён к ${url}`);
     joined = false;
     joinError = null;
+    warehouseJoined = false;
+    warehouseJoinError = null;
     const s = ensureSettings();
     let deviceAccess: string | null = null;
     try {
@@ -859,16 +1007,21 @@ function connectSocket() {
       },
       warehouse: s.warehouse,
     });
+    void joinWarehouseSocket();
     sendStatus();
   });
   socket.on("disconnect", () => {
     log("warn", "Socket.IO отключён");
     joined = false;
+    warehouseJoined = false;
+    warehouseJoinError = null;
     sendStatus();
   });
   socket.on("connect_error", (e) => {
     log("error", `Socket.IO ошибка подключения: ${String(e)}`);
     joined = false;
+    warehouseJoined = false;
+    warehouseJoinError = null;
     sendStatus();
   });
 
@@ -893,6 +1046,20 @@ function connectSocket() {
     joined = false;
     joinError = String((payload || {}).reason || "unknown");
     log("error", `join_error: ${joinError}`);
+    sendStatus();
+  });
+
+  socket.on("warehouse_join_ok", (payload) => {
+    warehouseJoined = true;
+    warehouseJoinError = null;
+    log("info", `warehouse_join_ok: ${JSON.stringify(payload || {})}`);
+    sendStatus();
+  });
+
+  socket.on("warehouse_join_error", (payload) => {
+    warehouseJoined = false;
+    warehouseJoinError = String((payload || {}).reason || "unknown");
+    log("warn", `warehouse_join_error: ${warehouseJoinError}`);
     sendStatus();
   });
 
@@ -1050,6 +1217,11 @@ ipcMain.handle("getStatus", async () => {
     connected: Boolean(socket?.connected),
     joined,
     joinError,
+    warehouseRealtime: {
+      connected: Boolean(socket?.connected),
+      joined: warehouseJoined,
+      joinError: warehouseJoinError,
+    },
     backendUrl: s.backendUrl,
     backend: {
       httpOk: backendHttp.ok,
@@ -1320,12 +1492,14 @@ ipcMain.handle("warehouse:login", async (_evt, payload: { phone: string; passwor
 
   saveWarehouseAuth({ phone, accessToken: access, refreshToken: refresh });
   log("info", `Warehouse login OK (${phone})`);
+  void joinWarehouseSocket();
   sendStatus();
   return { ok: true };
 });
 
 ipcMain.handle("warehouse:logout", async () => {
   saveWarehouseAuth({ accessToken: null, refreshToken: null });
+  leaveWarehouseSocket();
   log("info", "Warehouse logout");
   sendStatus();
   return { ok: true };
@@ -1392,14 +1566,19 @@ ipcMain.handle("warehouse:reasons", async () => {
 
 ipcMain.handle("warehouse:pickingStart", async (_evt, queueId: number) => {
   log("info", `Picking start queueId=${Number(queueId)}`);
-  const res = await warehouseRequestJson(`/api/warehouse/orders/${Number(queueId)}/picking/start`, { method: "POST", timeoutMs: 12000 });
-  if (!res.ok) {
-    const msg = res.json?.message || `picking/start failed (${res.status})`;
-    log("error", `Picking start failed queueId=${Number(queueId)}: ${String(msg)}`);
-    throw new Error(String(msg));
+  try {
+    const json = await warehouseActionRequest({
+      label: "picking/start",
+      event: "warehouse:picking_start",
+      payload: { queue_id: Number(queueId) },
+      path: `/api/warehouse/orders/${Number(queueId)}/picking/start`,
+    });
+    log("info", `Picking start OK queueId=${Number(queueId)}`);
+    return json;
+  } catch (e) {
+    log("error", `Picking start failed queueId=${Number(queueId)}: ${String(e)}`);
+    throw e;
   }
-  log("info", `Picking start OK queueId=${Number(queueId)}`);
-  return res.json;
 });
 
 ipcMain.handle("warehouse:pickingScan", async (_evt, payload: { queueId: number; code: string }) => {
@@ -1408,18 +1587,20 @@ ipcMain.handle("warehouse:pickingScan", async (_evt, payload: { queueId: number;
   if (!queueId || !code) throw new Error("queueId and code required");
 
   log("info", `Picking scan queueId=${queueId} code=${JSON.stringify(code)}`);
-  const res = await warehouseRequestJson(`/api/warehouse/orders/${queueId}/picking/scan`, {
-    method: "POST",
-    json: { code },
-    timeoutMs: 12000,
-  });
-  if (!res.ok) {
-    const msg = res.json?.message || `picking/scan failed (${res.status})`;
-    log("error", `Picking scan failed queueId=${queueId}: ${String(msg)}`);
-    throw new Error(String(msg));
+  try {
+    const json = await warehouseActionRequest({
+      label: "picking/scan",
+      event: "warehouse:picking_scan",
+      payload: { queue_id: queueId, code },
+      path: `/api/warehouse/orders/${queueId}/picking/scan`,
+      body: { code },
+    });
+    log("info", `Picking scan OK queueId=${queueId}`);
+    return json;
+  } catch (e) {
+    log("error", `Picking scan failed queueId=${queueId}: ${String(e)}`);
+    throw e;
   }
-  log("info", `Picking scan OK queueId=${queueId}`);
-  return res.json;
 });
 
 ipcMain.handle(
@@ -1440,17 +1621,52 @@ ipcMain.handle(
     if (reason_code) body.reason_code = reason_code;
     if (comment) body.comment = comment;
 
-    const res = await warehouseRequestJson(`/api/warehouse/orders/${queueId}/picking/finish`, {
-      method: "POST",
-      json: Object.keys(body).length ? body : undefined,
-      timeoutMs: 12000,
-    });
-    if (!res.ok) {
-      const msg = res.json?.message || `picking/finish failed (${res.status})`;
-      log("error", `Picking finish failed queueId=${queueId}: ${String(msg)}`);
-      throw new Error(String(msg));
+    try {
+      const json = await warehouseActionRequest({
+        label: "picking/finish",
+        event: "warehouse:picking_finish",
+        payload: { queue_id: queueId, ...(reason_code ? { reason_code } : {}), ...(comment ? { comment } : {}) },
+        path: `/api/warehouse/orders/${queueId}/picking/finish`,
+        body: Object.keys(body).length ? body : undefined,
+      });
+      log("info", `Picking finish OK queueId=${queueId}`);
+      return json;
+    } catch (e) {
+      log("error", `Picking finish failed queueId=${queueId}: ${String(e)}`);
+      throw e;
     }
-    log("info", `Picking finish OK queueId=${queueId}`);
-    return res.json;
+  },
+);
+
+ipcMain.handle(
+  "warehouse:pickingFail",
+  async (_evt, payload: { queueId: number; reason_code: string; comment?: string | null }) => {
+    const queueId = Number(payload?.queueId);
+    const reason_code = String(payload?.reason_code || "").trim();
+    const comment = payload?.comment ? String(payload.comment).trim() : "";
+    if (!queueId || !reason_code) throw new Error("queueId and reason_code required");
+
+    log(
+      "info",
+      `Picking fail queueId=${queueId} reason_code=${JSON.stringify(reason_code)} comment=${comment ? JSON.stringify(comment) : "null"}`,
+    );
+
+    const body: any = { reason_code };
+    if (comment) body.comment = comment;
+
+    try {
+      const json = await warehouseActionRequest({
+        label: "picking/fail",
+        event: "warehouse:picking_fail",
+        payload: { queue_id: queueId, reason_code, ...(comment ? { comment } : {}) },
+        path: `/api/warehouse/orders/${queueId}/picking/fail`,
+        body,
+      });
+      log("info", `Picking fail OK queueId=${queueId}`);
+      return json;
+    } catch (e) {
+      log("error", `Picking fail failed queueId=${queueId}: ${String(e)}`);
+      throw e;
+    }
   },
 );

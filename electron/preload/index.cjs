@@ -42,4 +42,6 @@ contextBridge.exposeInMainWorld("checkPrinter", {
   warehousePickingScan: (queueId, code) => ipcRenderer.invoke("warehouse:pickingScan", { queueId, code }),
   warehousePickingFinish: (queueId, reason_code, comment) =>
     ipcRenderer.invoke("warehouse:pickingFinish", { queueId, reason_code, comment }),
+  warehousePickingFail: (queueId, reason_code, comment) =>
+    ipcRenderer.invoke("warehouse:pickingFail", { queueId, reason_code, comment }),
 });

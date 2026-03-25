@@ -29,7 +29,7 @@ type AppRoutesProps = {
 
 export function AppRoutes(props: AppRoutesProps) {
   const authed = Boolean(props.status?.warehouseAuth?.hasToken);
-  const online = Boolean(props.status?.connected && props.status?.joined);
+  const online = Boolean(props.status?.backend?.httpOk);
   const defaultAuthedPath = "/warehouse";
 
   return (

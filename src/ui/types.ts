@@ -9,6 +9,7 @@ export type PrinterStatus = {
   connected: boolean;
   joined: boolean;
   joinError: string | null;
+  warehouseRealtime?: { connected: boolean; joined: boolean; joinError: string | null };
   backendUrl: string;
   backend?: { httpOk: boolean; httpError: string | null; checkedAt: string | null; httpStatus?: number | null };
   printer: {
@@ -101,6 +102,7 @@ export interface CheckPrinter {
   warehousePickingStart?: (queueId: number) => Promise<any>;
   warehousePickingScan?: (queueId: number, code: string) => Promise<WarehousePickingScanResult>;
   warehousePickingFinish?: (queueId: number, reason_code?: string | null, comment?: string | null) => Promise<any>;
+  warehousePickingFail?: (queueId: number, reason_code: string, comment?: string | null) => Promise<any>;
   windowMinimize?: () => Promise<void>;
   windowToggleMaximize?: () => Promise<void>;
   windowClose?: () => Promise<void>;
