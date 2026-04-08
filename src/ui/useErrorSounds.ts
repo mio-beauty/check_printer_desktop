@@ -3,6 +3,17 @@ import * as React from "react";
 import type { ErrorSound, ErrorSoundsResponse } from "./types";
 
 const REFRESH_INTERVAL_MS = 2 * 60 * 1000;
+const PREPARE_TIMEOUT_MS = 4000;
+
+type PreparedAudioEntry = {
+  cacheKey: string;
+  sourceUrl: string;
+  objectUrl: string | null;
+  audio: HTMLAudioElement | null;
+  preparePromise: Promise<HTMLAudioElement | null> | null;
+};
+
+const preparedAudioCache = new Map<string, PreparedAudioEntry>();
 
 function normalizeErrorSoundsResponse(raw: unknown): ErrorSoundsResponse {
   const source = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
@@ -56,17 +67,114 @@ export function isWrongScanErrorMessage(value: unknown): boolean {
   return message.includes("unknown_code") || message.includes("picked_qty_exceeds_ordered_qty");
 }
 
-export async function playErrorSound(sound: ErrorSound | null | undefined): Promise<boolean> {
+function getErrorSoundCacheKey(sound: ErrorSound | null | undefined): string {
+  const id = String(sound?.id || "").trim();
   const url = String(sound?.file_url || "").trim();
-  if (!url) return false;
+  return id && url ? `${id}|${url}` : "";
+}
+
+async function waitForAudioReady(audio: HTMLAudioElement): Promise<void> {
+  if (audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return;
+
+  await new Promise<void>((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      cleanup();
+      resolve();
+    };
+    const cleanup = () => {
+      audio.removeEventListener("canplaythrough", finish);
+      audio.removeEventListener("loadeddata", finish);
+      audio.removeEventListener("error", finish);
+      window.clearTimeout(timeoutId);
+    };
+    const timeoutId = window.setTimeout(finish, PREPARE_TIMEOUT_MS);
+    audio.addEventListener("canplaythrough", finish, { once: true });
+    audio.addEventListener("loadeddata", finish, { once: true });
+    audio.addEventListener("error", finish, { once: true });
+    audio.load();
+  });
+}
+
+export async function prepareErrorSound(sound: ErrorSound | null | undefined): Promise<HTMLAudioElement | null> {
+  const url = String(sound?.file_url || "").trim();
+  const cacheKey = getErrorSoundCacheKey(sound);
+  if (!url || !cacheKey) return null;
+
+  const cached = preparedAudioCache.get(cacheKey);
+  if (cached?.audio) return cached.audio;
+  if (cached?.preparePromise) return await cached.preparePromise;
+
+  const entry: PreparedAudioEntry = {
+    cacheKey,
+    sourceUrl: url,
+    objectUrl: null,
+    audio: null,
+    preparePromise: null,
+  };
+
+  entry.preparePromise = (async () => {
+    try {
+      let playbackUrl = url;
+      try {
+        const response = await fetch(url, { cache: "force-cache" });
+        if (response.ok) {
+          const blob = await response.blob();
+          entry.objectUrl = URL.createObjectURL(blob);
+          playbackUrl = entry.objectUrl;
+        }
+      } catch {
+        // Fallback to direct playback URL if eager fetch fails.
+      }
+
+      const audio = new Audio(playbackUrl);
+      audio.preload = "auto";
+      await waitForAudioReady(audio);
+      entry.audio = audio;
+      return audio;
+    } catch {
+      try {
+        const audio = new Audio(url);
+        audio.preload = "auto";
+        entry.audio = audio;
+        return audio;
+      } catch {
+        return null;
+      }
+    } finally {
+      entry.preparePromise = null;
+    }
+  })();
+
+  preparedAudioCache.set(cacheKey, entry);
+  return await entry.preparePromise;
+}
+
+export async function playErrorSound(sound: ErrorSound | null | undefined): Promise<boolean> {
+  const audio = await prepareErrorSound(sound);
+  if (!audio) return false;
   try {
-    const audio = new Audio(url);
-    audio.preload = "auto";
+    audio.pause();
+    if (Number.isFinite(audio.currentTime) && audio.currentTime > 0) {
+      audio.currentTime = 0;
+    }
     await audio.play();
     return true;
   } catch {
     return false;
   }
+}
+
+export function usePreparedErrorSound(sound: ErrorSound | null | undefined, enabled: boolean) {
+  const cacheKey = React.useMemo(() => getErrorSoundCacheKey(sound), [sound?.file_url, sound?.id]);
+
+  React.useEffect(() => {
+    if (!enabled) return;
+    if (!cacheKey) return;
+    void prepareErrorSound(sound);
+  }, [cacheKey, enabled, sound]);
 }
 
 export function useWarehouseErrorSounds(enabled: boolean) {

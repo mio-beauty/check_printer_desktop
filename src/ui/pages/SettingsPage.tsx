@@ -8,7 +8,7 @@ import { Separator } from "../../components/ui/separator";
 import { PrinterIcon } from "@/components/icons";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../components/ui/collapsible";
 import type { PrinterStatus, Settings, LogEntry, UpdateState } from "../types";
-import { playErrorSound, resolveEffectiveErrorSound, useWarehouseErrorSounds } from "../useErrorSounds";
+import { playErrorSound, resolveEffectiveErrorSound, usePreparedErrorSound, useWarehouseErrorSounds } from "../useErrorSounds";
 import { Settings2, ChevronDown, ChevronRight } from "lucide-react";
 
 export function SettingsPage(props: {
@@ -41,6 +41,7 @@ export function SettingsPage(props: {
     () => resolveEffectiveErrorSound(errorSounds.data, props.settings?.printer?.errorSoundId ?? null),
     [errorSounds.data, props.settings?.printer?.errorSoundId],
   );
+  usePreparedErrorSound(effectiveErrorSound, Boolean(props.status?.warehouseAuth?.hasToken));
   const selectedErrorSoundValue = React.useMemo(() => {
     const configured = String(props.settings?.printer?.errorSoundId || "").trim();
     if (!configured) return "__default__";

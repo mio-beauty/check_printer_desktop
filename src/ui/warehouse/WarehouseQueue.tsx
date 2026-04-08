@@ -9,7 +9,7 @@ import { Label } from "../../components/ui/label";
 import { WarehousePickingTabs } from "./components/WarehousePickingTabs";
 import { WarehouseOrdersPage } from "./pages/WarehouseOrdersPage";
 import { WarehousePickingPage } from "./pages/WarehousePickingPage";
-import { playErrorSound, resolveEffectiveErrorSound, useWarehouseErrorSounds } from "../useErrorSounds";
+import { playErrorSound, resolveEffectiveErrorSound, usePreparedErrorSound, useWarehouseErrorSounds } from "../useErrorSounds";
 import { useWarehouseQueue } from "./useWarehouseQueue";
 
 import type { WarehouseAuthStatus } from "./types";
@@ -24,10 +24,14 @@ export function WarehouseQueue(props: {
   settings: Settings | null;
 }) {
   const errorSounds = useWarehouseErrorSounds(props.active && props.online && !props.forcedUpdate && Boolean(props.auth?.hasToken));
+  const effectiveErrorSound = React.useMemo(
+    () => resolveEffectiveErrorSound(errorSounds.data, props.settings?.printer?.errorSoundId ?? null),
+    [errorSounds.data, props.settings?.printer?.errorSoundId],
+  );
+  usePreparedErrorSound(effectiveErrorSound, props.active && props.online && !props.forcedUpdate && Boolean(props.auth?.hasToken));
   const playWrongScanSound = React.useCallback(() => {
-    const sound = resolveEffectiveErrorSound(errorSounds.data, props.settings?.printer?.errorSoundId ?? null);
-    void playErrorSound(sound);
-  }, [errorSounds.data, props.settings?.printer?.errorSoundId]);
+    void playErrorSound(effectiveErrorSound);
+  }, [effectiveErrorSound]);
 
   const s = useWarehouseQueue({
     active: props.active,
