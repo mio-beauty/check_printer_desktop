@@ -1,5 +1,6 @@
 ﻿import { BrowserWindow, Menu, app, globalShortcut, ipcMain } from "electron";
 import { createRequire } from "node:module";
+import { shell } from "electron";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -72,6 +73,11 @@ function recomputeUpdateAvailable() {
     : policyUpdate?.message || updaterUpdate?.message || "";
 
   updateAvailable = { forced, message };
+}
+
+function currentDownloadUrl(): string | null {
+  const raw = String(updatePolicy?.downloadUrl || "").trim();
+  return raw || null;
 }
 
 function isDev(): boolean {
@@ -1257,6 +1263,14 @@ ipcMain.handle("getStatus", async () => {
       downloading: updateDownloading,
       progress: updateProgress,
       error: updateError,
+      policy: updatePolicy
+        ? {
+            latestVersion: updatePolicy.latestVersion,
+            minSupportedVersion: updatePolicy.minSupportedVersion,
+            downloadUrl: updatePolicy.downloadUrl,
+            notes: updatePolicy.notes,
+          }
+        : null,
     },
     deviceAuth: {
       printerId: s.deviceAuth?.printerId || null,
@@ -1439,12 +1453,29 @@ ipcMain.handle("checkUpdates", async () => {
 });
 
 ipcMain.handle("startUpdate", async () => {
-  if (isDev()) return;
+  if (isDev()) return { mode: "noop" as const };
   log("info", "Update requested by user");
   // Ensure we have the latest policy and/or updater metadata.
   await refreshUpdatePolicy();
   await checkForUpdates();
-  if (!updateAvailable) return;
+  if (!updateAvailable) return { mode: "noop" as const };
+  const url = currentDownloadUrl();
+
+  if (updateAvailable.forced && !updaterUpdate && url) {
+    updateDownloading = false;
+    updateProgress = null;
+    updateError = `Автообновление недоступно для этой версии.\nСкачать установщик: ${url}`;
+    sendStatus();
+    try {
+      await shell.openExternal(url);
+      log("warn", `Forced update fallback to external installer: ${url}`);
+      return { mode: "external" as const };
+    } catch (e) {
+      updateError = `Не удалось открыть ссылку на установщик.\nСкачать установщик: ${url}\n${String(e)}`;
+      sendStatus();
+      throw new Error(updateError);
+    }
+  }
   updateError = null;
   updateDownloading = true;
   updateProgress = 0;
@@ -1457,13 +1488,21 @@ ipcMain.handle("startUpdate", async () => {
   } catch (e) {
     updateDownloading = false;
     updateError = String(e);
+    if (updateAvailable?.forced && url) {
+      updateError = `Автообновление недоступно.\nСкачать установщик: ${url}\nИсходная ошибка: ${String(e)}`;
+      sendStatus();
+      try {
+        await shell.openExternal(url);
+        log("warn", `Forced update autoUpdater fallback to external installer: ${url}`);
+        return { mode: "external" as const };
+      } catch (openErr) {
+        updateError = `${updateError}\nНе удалось открыть ссылку: ${String(openErr)}`;
+      }
+    } else if (url) {
+      updateError = `${updateError}\nСкачать установщик: ${url}`;
+    }
     sendStatus();
-    // Avoid opening the installer automatically (user requested not to see it).
-    // Provide a link in the error so the user can download manually if needed.
-    const url = updatePolicy?.downloadUrl;
-    if (url) updateError = `${updateError}\nСкачать установщик: ${url}`;
-    sendStatus();
-    return;
+    throw new Error(updateError);
   }
   updateDownloading = false;
   sendStatus();
@@ -1473,6 +1512,14 @@ ipcMain.handle("startUpdate", async () => {
   } catch {
     // ignore
   }
+  return { mode: "auto" as const };
+});
+
+ipcMain.handle("openExternalUrl", async (_evt, url: unknown) => {
+  const target = String(url || "").trim();
+  if (!target) throw new Error("url is required");
+  await shell.openExternal(target);
+  return { ok: true };
 });
 
 ipcMain.handle("window:minimize", async () => {

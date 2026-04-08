@@ -118,7 +118,23 @@ export default function App() {
   const startUpdate = async () => {
     try {
       setUpdate({ kind: "downloading" });
-      await window.checkPrinter?.startUpdate();
+      const result = await window.checkPrinter?.startUpdate();
+      if (result && typeof result === "object" && "mode" in result) {
+        if (result.mode === "external") {
+          setUpdate({
+            kind: "error",
+            message:
+              status?.update?.error ||
+              (status?.update?.policy?.downloadUrl
+                ? `Автообновление недоступно.\nСкачать установщик: ${status.update.policy.downloadUrl}`
+                : "Автообновление недоступно. Откройте установщик вручную."),
+          });
+          return;
+        }
+        if (result.mode === "noop") {
+          return;
+        }
+      }
       setUpdate({ kind: "ready", message: "Обновление скачано. Если вы выбрали “Перезапустить”, приложение перезапустится." });
     } catch (e) {
       setUpdate({ kind: "error", message: String(e) });

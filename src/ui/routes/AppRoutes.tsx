@@ -51,12 +51,19 @@ export function AppRoutes(props: AppRoutesProps) {
             >
               <ForcedUpdatePage
                 currentVersion={props.status?.appVersion ?? "—"}
-                minSupportedVersion={null}
+                minSupportedVersion={props.status?.update?.policy?.minSupportedVersion ?? null}
                 message={props.update.kind === "available" ? props.update.message : "Обновление обязательно."}
+                notes={props.status?.update?.policy?.notes ?? null}
+                downloadUrl={props.status?.update?.policy?.downloadUrl ?? null}
                 downloading={props.update.kind === "downloading"}
                 progress={props.update.kind === "downloading" ? props.update.progress ?? null : null}
                 error={props.update.kind === "error" ? props.update.message : null}
                 onUpdate={props.onStartUpdate}
+                onDownloadInstaller={async () => {
+                  const url = props.status?.update?.policy?.downloadUrl;
+                  if (!url) return;
+                  await window.checkPrinter?.openExternalUrl?.(url);
+                }}
               />
             </Layout>
           }

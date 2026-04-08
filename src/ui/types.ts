@@ -26,7 +26,20 @@ export type PrinterStatus = {
   };
   warehouse: { name: string; lat: number | null; lon: number | null };
   appVersion?: string;
-  update?: { available: boolean; forced: boolean; message: string; downloading: boolean; progress: number | null; error: string | null };
+  update?: {
+    available: boolean;
+    forced: boolean;
+    message: string;
+    downloading: boolean;
+    progress: number | null;
+    error: string | null;
+    policy?: {
+      latestVersion?: string | null;
+      minSupportedVersion?: string | null;
+      downloadUrl?: string | null;
+      notes?: string | null;
+    } | null;
+  };
   deviceAuth?: { printerId: string | null; activated: boolean };
   warehouseAuth?: { phone: string | null; hasToken: boolean };
   window?: { maximized: boolean };
@@ -109,7 +122,8 @@ export interface CheckPrinter {
   usbProbe?: () => Promise<UsbPrinterProbeResult>;
   usbTestPrint?: (text?: string) => Promise<{ ok: boolean }>;
   checkUpdates: () => Promise<{ available: boolean; forced: boolean; message: string }>;
-  startUpdate: () => Promise<void>;
+  startUpdate: () => Promise<{ mode: "auto" | "external" | "noop" } | void>;
+  openExternalUrl?: (url: string) => Promise<{ ok: boolean }>;
   deviceActivate: (code: string) => Promise<DeviceActivateResult>;
   warehouseLogin?: (phone: string, password: string) => Promise<{ ok: boolean }>;
   warehouseLogout?: () => Promise<{ ok: boolean }>;

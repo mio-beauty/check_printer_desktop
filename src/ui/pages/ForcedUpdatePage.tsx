@@ -9,10 +9,12 @@ type Props = {
   minSupportedVersion: string | null;
   message: string;
   notes?: string | null;
+  downloadUrl?: string | null;
   downloading: boolean;
   progress: number | null;
   error: string | null;
   onUpdate: () => Promise<void> | void;
+  onDownloadInstaller?: () => Promise<void> | void;
 };
 
 export function ForcedUpdatePage(props: Props) {
@@ -60,6 +62,11 @@ export function ForcedUpdatePage(props: Props) {
                 <RefreshCw className="mr-2 h-4 w-4" />
                 Обновить
               </Button>
+              {props.downloadUrl ? (
+                <Button type="button" variant="outline" onClick={() => void props.onDownloadInstaller?.()} disabled={props.downloading}>
+                  Скачать установщик
+                </Button>
+              ) : null}
             </div>
           </CardContent>
         </Card>

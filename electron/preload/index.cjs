@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld("checkPrinter", {
   usbTestPrint: (text) => ipcRenderer.invoke("usb:testPrint", text),
   checkUpdates: () => ipcRenderer.invoke("checkUpdates"),
   startUpdate: () => ipcRenderer.invoke("startUpdate"),
+  openExternalUrl: (url) => ipcRenderer.invoke("openExternalUrl", url),
   deviceActivate: (code) => ipcRenderer.invoke("device:activate", { code }),
   windowMinimize: () => ipcRenderer.invoke("window:minimize"),
   windowToggleMaximize: () => ipcRenderer.invoke("window:toggleMaximize"),
