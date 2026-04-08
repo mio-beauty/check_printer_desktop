@@ -412,7 +412,13 @@ export function WarehouseOrdersPage(props: {
                 {visibleItems.length === 0 && <div className="text-sm text-muted-foreground">Пусто.</div>}
 
                 {visibleItems.map((it) => {
-                  const primaryCta = it.active_session_id || it.picking_status === "PICKING" ? "Продолжить" : "Начать";
+                  const statusUp = safeToUpper(it.picking_status);
+                  const primaryCta =
+                    it.active_session_id || statusUp === "PICKING"
+                      ? "Продолжить"
+                      : statusUp === "PICKED" || statusUp === "PARTIALLY_PICKED" || statusUp === "PICK_FAILED"
+                        ? "Открыть"
+                        : "Начать";
                   const ctaDisabled = props.actionsDisabled;
                   const reasonLabel = it.partial_reason_code
                     ? props.partialReasons.find((r) => r.code === it.partial_reason_code)?.label || it.partial_reason_code

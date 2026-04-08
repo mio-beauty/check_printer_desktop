@@ -6,6 +6,7 @@ const WAREHOUSE_ERROR_LABELS: Record<string, string> = {
   access_token_invalid: "Сессия недействительна. Войдите заново.",
   not_found: "Заказ не найден.",
   "no active picking session": "Нет активной сессии сборки.",
+  picking_already_finished: "Этот заказ уже завершён и не может быть запущен заново.",
   "queue_id is required": "Не удалось определить заказ для операции.",
   "reason_code is required": "Укажите причину.",
   "reason_code is required for partial finish": "Укажите причину частичной сборки.",
