@@ -150,7 +150,7 @@ function OrderCard(props: {
     null;
   const createdAt = formatRuDateTime(createdAtRaw);
   const finishedAt = formatRuDateTime(props.it.finished_at ?? null);
-  const showFinishedMeta = statusUp === "PICKED" && Boolean(finishedAt);
+  const showFinishedMeta = (statusUp === "PICKED" || statusUp === "PARTIALLY_PICKED") && Boolean(finishedAt);
   const finisherLabel =
     (props.it.finished_by_display && String(props.it.finished_by_display).trim()) ||
     (props.it.finished_by_user_id != null ? `User #${props.it.finished_by_user_id}` : null);
@@ -279,10 +279,13 @@ export function WarehouseOrdersPage(props: {
   const visibleItems = React.useMemo(() => {
     const items = Array.isArray(s.data?.items) ? s.data!.items : [];
 
-    // Safety net: never show PICKED orders outside the dedicated completed filter.
+    // Safety net: completed orders must live only inside the dedicated completed filter.
     const filtered =
       s.mode === "queue" && safeToUpper(s.statusFilter) !== "PICKED"
-        ? items.filter((it) => safeToUpper(it.picking_status) !== "PICKED")
+        ? items.filter((it) => {
+            const statusUp = safeToUpper(it.picking_status);
+            return statusUp !== "PICKED" && statusUp !== "PARTIALLY_PICKED";
+          })
         : items;
 
     const score = (it: OrderItem) => percent(Number(it.progress?.picked ?? 0), Number(it.progress?.ordered ?? 0));
@@ -353,17 +356,9 @@ export function WarehouseOrdersPage(props: {
               ) : (
                 <>
                   <StatusFilterChip
-                    active={s.statusFilter === "PARTIALLY_PICKED"}
-                    label="Частично"
-                    srLabel="Фильтр A"
-                    icon={<Clock className="h-5 w-5" />}
-                    onClick={() => s.setStatusFilter("PARTIALLY_PICKED")}
-                    disabled={s.loading}
-                  />
-                  <StatusFilterChip
                     active={s.statusFilter === "PICK_FAILED"}
                     label="Ошибка"
-                    srLabel="Фильтр B"
+                    srLabel="Фильтр A"
                     icon={<TriangleAlert className="h-5 w-5" />}
                     onClick={() => s.setStatusFilter("PICK_FAILED")}
                     disabled={s.loading}
@@ -393,7 +388,7 @@ export function WarehouseOrdersPage(props: {
           <CardTitle>{s.mode === "problems" ? "Проблемные заказы" : "Список"}</CardTitle>
           <CardDescription>
             {s.mode === "problems"
-              ? "PARTIALLY_PICKED и PICK_FAILED. Можно открыть заказ и посмотреть причину и аудит."
+              ? "PICK_FAILED. Можно открыть заказ и посмотреть причину и аудит."
               : "Заказы для сборки. Клик по заказу открывает экран сборки."}
           </CardDescription>
         </CardHeader>
