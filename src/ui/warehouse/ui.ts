@@ -22,7 +22,7 @@ export function statusLabel(s: string): string {
     case "PICKED":
       return "Собран";
     case "PARTIALLY_PICKED":
-      return "Частично собран";
+      return "Частично собрано";
     case "PICK_FAILED":
       return "Ошибка";
     default:
@@ -46,4 +46,3 @@ export function percent(picked: number, ordered: number): number {
   if (!Number.isFinite(p) || p <= 0) return 0;
   return Math.max(0, Math.min(100, (p / o) * 100));
 }
-
