@@ -10,6 +10,7 @@ export type PrinterStatus = {
   joined: boolean;
   joinError: string | null;
   warehouseRealtime?: { connected: boolean; joined: boolean; joinError: string | null };
+  debug?: { forceWarehouseHttp: boolean };
   backendUrl: string;
   backend?: { httpOk: boolean; httpError: string | null; checkedAt: string | null; httpStatus?: number | null };
   printer: {
@@ -42,6 +43,7 @@ export type Settings = {
   backendUrl: string;
   printerClientToken: string | null;
   clientId: string;
+  debug?: { forceWarehouseHttp?: boolean };
   deviceAuth?: { printerId: string | null; accessToken: string | null; refreshToken: string | null };
   warehouseAuth?: {
     phone: string | null;

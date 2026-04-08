@@ -1,6 +1,7 @@
 import * as React from "react";
 
 import type { ErrorSound, ErrorSoundsResponse } from "./types";
+import { extractRemoteErrorMessage } from "./warehouse/errors";
 
 const REFRESH_INTERVAL_MS = 2 * 60 * 1000;
 const PREPARE_TIMEOUT_MS = 4000;
@@ -63,7 +64,7 @@ export function resolveEffectiveErrorSound(data: ErrorSoundsResponse | null | un
 }
 
 export function isWrongScanErrorMessage(value: unknown): boolean {
-  const message = String(value ?? "").toLowerCase();
+  const message = extractRemoteErrorMessage(value).toLowerCase();
   return message.includes("unknown_code") || message.includes("picked_qty_exceeds_ordered_qty");
 }
 
@@ -71,6 +72,23 @@ function getErrorSoundCacheKey(sound: ErrorSound | null | undefined): string {
   const id = String(sound?.id || "").trim();
   const url = String(sound?.file_url || "").trim();
   return id && url ? `${id}|${url}` : "";
+}
+
+function shouldPrepareViaFetch(url: string): boolean {
+  const source = String(url || "").trim();
+  if (!source || typeof window === "undefined") return false;
+
+  try {
+    const resolved = new URL(source, window.location.href);
+    const protocol = resolved.protocol.toLowerCase();
+    if (protocol === "blob:" || protocol === "data:") return true;
+    if (protocol !== "http:" && protocol !== "https:") return false;
+    const pageOrigin = String(window.location.origin || "").trim();
+    if (!pageOrigin || pageOrigin === "null") return false;
+    return resolved.origin === pageOrigin;
+  } catch {
+    return false;
+  }
 }
 
 async function waitForAudioReady(audio: HTMLAudioElement): Promise<void> {
@@ -118,15 +136,13 @@ export async function prepareErrorSound(sound: ErrorSound | null | undefined): P
   entry.preparePromise = (async () => {
     try {
       let playbackUrl = url;
-      try {
+      if (shouldPrepareViaFetch(url)) {
         const response = await fetch(url, { cache: "force-cache" });
         if (response.ok) {
           const blob = await response.blob();
           entry.objectUrl = URL.createObjectURL(blob);
           playbackUrl = entry.objectUrl;
         }
-      } catch {
-        // Fallback to direct playback URL if eager fetch fails.
       }
 
       const audio = new Audio(playbackUrl);

@@ -706,6 +706,32 @@ export function SettingsPage(props: {
                     </div>
                   </div>
 
+                  <label className="flex items-start gap-3 rounded-xl border bg-background/70 px-3 py-3">
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-4 w-4"
+                      checked={Boolean(props.settings?.debug?.forceWarehouseHttp)}
+                      onChange={(e) =>
+                        props.setSettings((p) => {
+                          if (!p) return null;
+                          return {
+                            ...p,
+                            debug: {
+                              ...(p.debug || {}),
+                              forceWarehouseHttp: e.target.checked,
+                            },
+                          };
+                        })
+                      }
+                    />
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium">Warehouse через HTTP</div>
+                      <div className="text-xs text-muted-foreground">
+                        Отладочный режим. `scan/finish/fail` пойдут через REST вместо Socket.IO и будут видны в обычных backend логах.
+                      </div>
+                    </div>
+                  </label>
+
                   <div className="flex flex-wrap gap-2">
                     <Button
                       variant="outline"

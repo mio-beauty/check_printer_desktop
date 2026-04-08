@@ -2,6 +2,7 @@ import * as React from "react";
 
 import type { OrderDetailResponse, OrderEventsResponse, OrdersResponse, WarehouseAuthStatus, WarehouseReason } from "./types";
 import { isWrongScanErrorMessage } from "../useErrorSounds";
+import { formatWarehouseError, normalizeWarehouseScanErrorText } from "./errors";
 
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [v, setV] = React.useState(value);
@@ -93,7 +94,7 @@ export function useWarehouseQueue(opts: {
         const list = Array.isArray(json?.reasons) ? json.reasons : [];
         setReasons(list.filter((r) => r && typeof r.code === "string" && typeof r.label === "string"));
       } catch (e) {
-        setReasonsError(String(e));
+        setReasonsError(formatWarehouseError(e));
       }
     })();
   }, [hasToken, opts.active, opts.online]);
@@ -119,7 +120,7 @@ export function useWarehouseQueue(opts: {
         })) as OrdersResponse;
         setData(json);
       } catch (e) {
-        setError(String(e));
+        setError(formatWarehouseError(e));
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -167,7 +168,7 @@ export function useWarehouseQueue(opts: {
         const json = (await window.checkPrinter?.warehouseOrderDetail?.(id)) as OrderDetailResponse;
         setDetail(json);
       } catch (e) {
-        setDetailError(String(e));
+        setDetailError(formatWarehouseError(e));
       } finally {
         setDetailBusy(false);
       }
@@ -179,7 +180,7 @@ export function useWarehouseQueue(opts: {
         const ev = (await window.checkPrinter.warehouseOrderEvents(id)) as OrderEventsResponse;
         setEvents(ev);
       } catch (e) {
-        setEventsError(String(e));
+        setEventsError(formatWarehouseError(e));
       } finally {
         setEventsBusy(false);
       }
@@ -303,7 +304,7 @@ export function useWarehouseQueue(opts: {
         await openDetail(id);
         await refresh("background");
       } catch (e) {
-        setDetailError(String(e));
+        setDetailError(formatWarehouseError(e));
       }
     },
     [openDetail, opts.forcedUpdate, refresh],
@@ -329,7 +330,7 @@ export function useWarehouseQueue(opts: {
         await refresh("background");
       })()
         .catch((e) => {
-          setDetailError(String(e));
+          setDetailError(formatWarehouseError(e));
           throw e;
         })
         .finally(() => {
@@ -359,7 +360,7 @@ export function useWarehouseQueue(opts: {
         setSelectedId(null);
         setDetail(null);
       } catch (e) {
-        setFinishError(String(e));
+        setFinishError(formatWarehouseError(e));
       } finally {
         setFinishBusy(false);
       }
@@ -384,8 +385,9 @@ export function useWarehouseQueue(opts: {
         await openDetail(id);
         await refresh("background");
       } catch (e) {
-        setPrintRetryError(String(e));
-        setDetailError(String(e));
+        const message = formatWarehouseError(e);
+        setPrintRetryError(message);
+        setDetailError(message);
       } finally {
         setPrintRetryBusy(false);
       }
@@ -538,7 +540,7 @@ export function useWarehouseQueue(opts: {
       setPassword("");
       await refresh("initial");
     } catch (e) {
-      setLoginError(String(e));
+      setLoginError(formatWarehouseError(e));
     } finally {
       setLoginBusy(false);
     }
@@ -555,7 +557,7 @@ export function useWarehouseQueue(opts: {
     try {
       await window.checkPrinter?.warehouseLogout?.();
     } catch (e) {
-      setLoginError(String(e));
+      setLoginError(formatWarehouseError(e));
     }
   };
 
@@ -599,7 +601,7 @@ export function useWarehouseQueue(opts: {
     scanCode,
     setScanCode,
     scanBusy,
-    scanError,
+    scanError: normalizeWarehouseScanErrorText(scanError),
     pendingScan,
     lastScan,
     lastScanTsByItemId,

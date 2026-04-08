@@ -441,6 +441,9 @@ function sendStatus() {
       joined: warehouseJoined,
       joinError: warehouseJoinError,
     },
+    debug: {
+      forceWarehouseHttp: Boolean(s.debug?.forceWarehouseHttp),
+    },
     backendUrl: s.backendUrl,
     backend: {
       httpOk: backendHttp.ok,
@@ -484,6 +487,10 @@ function sendStatus() {
       maximized: windowIsMaximized,
     },
   });
+}
+
+function forceWarehouseHttpTransport(): boolean {
+  return Boolean(ensureSettings().debug?.forceWarehouseHttp);
 }
 
 async function apiFetchJson(
@@ -720,6 +727,12 @@ function nextWarehouseRequestId(prefix: string): string {
 
 async function joinWarehouseSocket() {
   if (updateAvailable?.forced) return;
+  if (forceWarehouseHttpTransport()) {
+    warehouseJoined = false;
+    warehouseJoinError = null;
+    sendStatus();
+    return;
+  }
   if (!socket?.connected) {
     warehouseJoined = false;
     warehouseJoinError = null;
@@ -821,7 +834,9 @@ async function warehouseActionRequest(opts: {
   timeoutMs?: number;
   httpTimeoutMs?: number;
 }) {
-  if (socket?.connected) {
+  if (forceWarehouseHttpTransport()) {
+    log("info", `${opts.label} using HTTP transport (forceWarehouseHttp=true)`);
+  } else if (socket?.connected) {
     try {
       return await warehouseSocketRequest(opts.event, opts.payload || {}, opts.timeoutMs ?? 4000);
     } catch (e) {
@@ -1222,6 +1237,9 @@ ipcMain.handle("getStatus", async () => {
       joined: warehouseJoined,
       joinError: warehouseJoinError,
     },
+    debug: {
+      forceWarehouseHttp: Boolean(s.debug?.forceWarehouseHttp),
+    },
     backendUrl: s.backendUrl,
     backend: {
       httpOk: backendHttp.ok,
@@ -1265,6 +1283,7 @@ ipcMain.handle("setSettings", async (_evt, next: Partial<Settings>) => {
   const safeNext: Partial<Settings> = {
     backendUrl: next.backendUrl,
     printerClientToken: next.printerClientToken,
+    debug: next.debug,
     printer: next.printer,
     warehouse: next.warehouse,
   };
