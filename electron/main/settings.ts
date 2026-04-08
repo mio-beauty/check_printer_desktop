@@ -25,6 +25,7 @@ export type Settings = {
     name: string;
     mode?: "lan" | "usb" | "lan_then_usb";
     usbPrinterName?: string | null;
+    errorSoundId?: string | null;
   };
   warehouse: {
     name: string;
@@ -60,7 +61,7 @@ function defaultSettings(): Settings {
     clientId: crypto.randomUUID(),
     deviceAuth: { printerId: null, accessToken: null, refreshToken: null },
     warehouseAuth: { phone: null, accessToken: null, refreshToken: null },
-    printer: { host, port, encoding, codepage, name, mode: "lan_then_usb", usbPrinterName: null },
+    printer: { host, port, encoding, codepage, name, mode: "lan_then_usb", usbPrinterName: null, errorSoundId: null },
     warehouse: { name: warehouseName, lat: null, lon: null },
   };
 }
@@ -106,6 +107,8 @@ export function loadSettings(): Settings {
           : defaults.printer.mode,
         usbPrinterName:
           (typeof parsed?.printer?.usbPrinterName === "string" ? parsed.printer.usbPrinterName : "")?.trim() || null,
+        errorSoundId:
+          (typeof parsed?.printer?.errorSoundId === "string" ? parsed.printer.errorSoundId : "")?.trim() || null,
       },
       warehouse: {
         name: String(parsed?.warehouse?.name || defaults.warehouse.name),
@@ -158,6 +161,10 @@ export function saveSettings(partial: Partial<Settings>): Settings {
         partial.printer?.usbPrinterName !== undefined
           ? (String(partial.printer.usbPrinterName || "").trim() || null)
           : (current.printer.usbPrinterName || null),
+      errorSoundId:
+        partial.printer?.errorSoundId !== undefined
+          ? (String(partial.printer.errorSoundId || "").trim() || null)
+          : (current.printer.errorSoundId || null),
     },
     warehouse: {
       name: partial.warehouse?.name !== undefined ? String(partial.warehouse.name) : current.warehouse.name,

@@ -8,6 +8,7 @@ import { Separator } from "../../components/ui/separator";
 import { PrinterIcon } from "@/components/icons";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../components/ui/collapsible";
 import type { PrinterStatus, Settings, LogEntry, UpdateState } from "../types";
+import { playErrorSound, resolveEffectiveErrorSound, useWarehouseErrorSounds } from "../useErrorSounds";
 import { Settings2, ChevronDown, ChevronRight } from "lucide-react";
 
 export function SettingsPage(props: {
@@ -35,6 +36,16 @@ export function SettingsPage(props: {
   const [usbPrintersBusy, setUsbPrintersBusy] = React.useState(false);
   const [usbProbeBusy, setUsbProbeBusy] = React.useState(false);
   const [usbTestBusy, setUsbTestBusy] = React.useState(false);
+  const errorSounds = useWarehouseErrorSounds(Boolean(props.status?.warehouseAuth?.hasToken));
+  const effectiveErrorSound = React.useMemo(
+    () => resolveEffectiveErrorSound(errorSounds.data, props.settings?.printer?.errorSoundId ?? null),
+    [errorSounds.data, props.settings?.printer?.errorSoundId],
+  );
+  const selectedErrorSoundValue = React.useMemo(() => {
+    const configured = String(props.settings?.printer?.errorSoundId || "").trim();
+    if (!configured) return "__default__";
+    return errorSounds.data.sounds.some((sound) => sound.id === configured) ? configured : "__default__";
+  }, [errorSounds.data.sounds, props.settings?.printer?.errorSoundId]);
 
   const reach = props.status?.printer?.reachability ?? null;
   const reachLabel = React.useMemo(() => {
@@ -98,9 +109,24 @@ export function SettingsPage(props: {
         encoding: "cp866",
         codepage: 17,
         name: "Mio beauty Склад принтер",
+        errorSoundId: null,
       }
     );
   }, []);
+
+  React.useEffect(() => {
+    const configured = String(props.settings?.printer?.errorSoundId || "").trim();
+    if (!configured) return;
+    if (errorSounds.loading) return;
+    if (errorSounds.data.sounds.some((sound) => sound.id === configured)) return;
+
+    props.setSettings((p) => {
+      if (!p) return null;
+      const printer = ensurePrinter(p);
+      if (!printer.errorSoundId) return p;
+      return { ...p, printer: { ...printer, errorSoundId: null } };
+    });
+  }, [ensurePrinter, errorSounds.data.sounds, errorSounds.loading, props.setSettings, props.settings?.printer?.errorSoundId]);
 
   const canTestPrint = React.useMemo(() => {
     if (props.forcedUpdate) return false;
@@ -350,6 +376,51 @@ export function SettingsPage(props: {
                   </Button>
                 </div>
                 <div className="text-xs text-muted-foreground">Нужен установленный Windows-драйвер (например, Xprinter XP-80T)</div>
+              </div>
+
+              <div className="grid gap-2 lg:col-span-2">
+                <Label>Звук ошибки сканирования</Label>
+                <div className="flex flex-col gap-2 lg:flex-row">
+                  <div className="min-w-0 flex-1">
+                    <Select
+                      value={selectedErrorSoundValue}
+                      onChange={(e) =>
+                        props.setSettings((p) => {
+                          if (!p) return null;
+                          const printer = ensurePrinter(p);
+                          const errorSoundId = e.target.value === "__default__" ? null : String(e.target.value || "").trim() || null;
+                          return { ...p, printer: { ...printer, errorSoundId } };
+                        })
+                      }
+                    >
+                      <option value="__default__">
+                        {effectiveErrorSound ? `По умолчанию (${effectiveErrorSound.name})` : "По умолчанию (без звука)"}
+                      </option>
+                      {errorSounds.data.sounds.map((sound) => (
+                        <option key={sound.id} value={sound.id}>
+                          {sound.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!effectiveErrorSound?.file_url}
+                    onClick={() => {
+                      void playErrorSound(effectiveErrorSound);
+                    }}
+                  >
+                    Прослушать
+                  </Button>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Если оставить значение по умолчанию, этот компьютер будет использовать звук, который админ выбрал в frontend.
+                </div>
+                {errorSounds.error ? <div className="text-xs text-destructive">{errorSounds.error}</div> : null}
+                {!errorSounds.loading && errorSounds.data.sounds.length === 0 ? (
+                  <div className="text-xs text-muted-foreground">Админ пока не загрузил ни одного звука ошибки.</div>
+                ) : null}
               </div>
             </div>
 

@@ -56,8 +56,25 @@ export type Settings = {
     name: string;
     mode?: "lan" | "usb" | "lan_then_usb";
     usbPrinterName?: string | null;
+    errorSoundId?: string | null;
   };
   warehouse: { name: string; lat: number | null; lon: number | null };
+};
+
+export type ErrorSound = {
+  id: string;
+  name: string;
+  file_url: string;
+  content_type?: string | null;
+  size_bytes?: number | null;
+  original_filename?: string | null;
+  created_at?: string | null;
+  is_default?: boolean;
+};
+
+export type ErrorSoundsResponse = {
+  default_sound_id: string | null;
+  sounds: ErrorSound[];
 };
 
 export type LogEntry = { ts: string; level: "info" | "warn" | "error"; message: string };
@@ -99,6 +116,7 @@ export interface CheckPrinter {
   warehouseOrderEvents?: (queueId: number) => Promise<OrderEventsResponse>;
   warehousePrintRetry?: (queueId: number) => Promise<{ ok?: boolean; dispatched?: boolean; print_job?: { id: string; status: string; error?: string | null } }>;
   warehouseReasons?: () => Promise<{ reasons?: WarehouseReason[] }>;
+  warehouseErrorSounds?: () => Promise<ErrorSoundsResponse>;
   warehousePickingStart?: (queueId: number) => Promise<any>;
   warehousePickingScan?: (queueId: number, code: string) => Promise<WarehousePickingScanResult>;
   warehousePickingFinish?: (queueId: number, reason_code?: string | null, comment?: string | null) => Promise<any>;

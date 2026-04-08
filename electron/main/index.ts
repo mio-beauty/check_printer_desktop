@@ -1564,6 +1564,15 @@ ipcMain.handle("warehouse:reasons", async () => {
   return res.json;
 });
 
+ipcMain.handle("warehouse:errorSounds", async () => {
+  const res = await warehouseRequestJson(`/api/warehouse/error-sounds`, { method: "GET", timeoutMs: 12000 });
+  if (!res.ok) {
+    const msg = res.json?.message || `warehouse/errorSounds failed (${res.status})`;
+    throw new Error(String(msg));
+  }
+  return res.json;
+});
+
 ipcMain.handle("warehouse:pickingStart", async (_evt, queueId: number) => {
   log("info", `Picking start queueId=${Number(queueId)}`);
   try {

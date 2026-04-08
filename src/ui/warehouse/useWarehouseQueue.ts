@@ -1,6 +1,7 @@
 import * as React from "react";
 
 import type { OrderDetailResponse, OrderEventsResponse, OrdersResponse, WarehouseAuthStatus, WarehouseReason } from "./types";
+import { isWrongScanErrorMessage } from "../useErrorSounds";
 
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [v, setV] = React.useState(value);
@@ -16,6 +17,7 @@ export function useWarehouseQueue(opts: {
   online: boolean;
   forcedUpdate: boolean;
   auth: WarehouseAuthStatus | null;
+  onWrongScanError?: () => void;
 }) {
   const hasToken = Boolean(opts.auth?.hasToken);
   const hintRefreshTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -443,13 +445,14 @@ export function useWarehouseQueue(opts: {
           void softRefreshDetail(queueId);
         }, 30000);
       } catch (e) {
+        if (isWrongScanErrorMessage(e)) opts.onWrongScanError?.();
         setScanError(`Код ${JSON.stringify(clean)}: ${String(e)}`);
       } finally {
         setScanBusy(false);
         setPendingScan(null);
       }
     },
-    [ensurePickingStarted, opts.forcedUpdate, selectedId, softRefreshDetail],
+    [ensurePickingStarted, opts.forcedUpdate, opts.onWrongScanError, selectedId, softRefreshDetail],
   );
 
   React.useEffect(() => {

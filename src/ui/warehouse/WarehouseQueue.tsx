@@ -9,9 +9,11 @@ import { Label } from "../../components/ui/label";
 import { WarehousePickingTabs } from "./components/WarehousePickingTabs";
 import { WarehouseOrdersPage } from "./pages/WarehouseOrdersPage";
 import { WarehousePickingPage } from "./pages/WarehousePickingPage";
+import { playErrorSound, resolveEffectiveErrorSound, useWarehouseErrorSounds } from "../useErrorSounds";
 import { useWarehouseQueue } from "./useWarehouseQueue";
 
 import type { WarehouseAuthStatus } from "./types";
+import type { Settings } from "../types";
 
 export function WarehouseQueue(props: {
   active: boolean;
@@ -19,8 +21,21 @@ export function WarehouseQueue(props: {
   offlineReason?: string | null;
   forcedUpdate: boolean;
   auth: WarehouseAuthStatus | null;
+  settings: Settings | null;
 }) {
-  const s = useWarehouseQueue(props);
+  const errorSounds = useWarehouseErrorSounds(props.active && props.online && !props.forcedUpdate && Boolean(props.auth?.hasToken));
+  const playWrongScanSound = React.useCallback(() => {
+    const sound = resolveEffectiveErrorSound(errorSounds.data, props.settings?.printer?.errorSoundId ?? null);
+    void playErrorSound(sound);
+  }, [errorSounds.data, props.settings?.printer?.errorSoundId]);
+
+  const s = useWarehouseQueue({
+    active: props.active,
+    online: props.online,
+    forcedUpdate: props.forcedUpdate,
+    auth: props.auth,
+    onWrongScanError: playWrongScanSound,
+  });
   const offline = !props.online;
   const actionsDisabled = offline || props.forcedUpdate || s.loading;
 

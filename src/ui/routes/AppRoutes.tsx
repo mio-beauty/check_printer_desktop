@@ -135,6 +135,7 @@ export function AppRoutes(props: AppRoutesProps) {
                   online={online}
                   forcedUpdate={props.forcedUpdate}
                   auth={props.status?.warehouseAuth ?? null}
+                  settings={props.settings}
                 />
               }
             />
