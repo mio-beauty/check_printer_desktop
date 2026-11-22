@@ -271,6 +271,7 @@ export function useWarehouseQueue(opts: {
             prev.order.print_status === json.order.print_status &&
             prev.order.print_error === json.order.print_error &&
             prev.order.ms_update?.updated_at === json.order.ms_update?.updated_at &&
+            prev.order.ms_update?.status_review_required === json.order.ms_update?.status_review_required &&
             prev.order.ms_update?.picking_review_required === json.order.ms_update?.picking_review_required &&
             prev.order.ms_update?.receipt_stale === json.order.ms_update?.receipt_stale
               ? prev.order
@@ -377,18 +378,20 @@ export function useWarehouseQueue(opts: {
     [opts.forcedUpdate, refresh, refreshPickingTabs, selectedId],
   );
 
-  const confirmPickingUpdate = React.useCallback(async () => {
+  const confirmPickingUpdate = React.useCallback(async (statusOnly = false) => {
     const version = detail?.order.ms_update?.updated_at;
     if (!selectedId || !version || opts.forcedUpdate || !opts.online) return;
     setConfirmUpdateBusy(true);
     setDetailError(null);
     try {
       const confirm = window.checkPrinter?.warehousePickingConfirmUpdate;
-      if (!confirm) throw new Error("Обновите Desktop для сверки состава заказа.");
-      await confirm(selectedId, version);
-      setFinishConfirmOpen(false);
-      setPartialOpen(false);
-      finishConfirmShownRef.current = null;
+      if (!confirm) throw new Error("Обновите Desktop для подтверждения изменений заказа.");
+      await confirm(selectedId, version, statusOnly);
+      if (!statusOnly) {
+        setFinishConfirmOpen(false);
+        setPartialOpen(false);
+        finishConfirmShownRef.current = null;
+      }
       await softRefreshDetail(selectedId);
       await refresh("background");
       await refreshPickingTabs();
@@ -547,7 +550,7 @@ export function useWarehouseQueue(opts: {
         if (!reason) return;
         // `auth_expired` is handled globally in `src/ui/App.tsx`.
         if (reason === "auth_expired") return;
-        if (selectedId !== null && (reason === "order_updated" || reason.startsWith("printed_"))) {
+        if (selectedId !== null && (reason === "order_updated" || reason === "order_status_acknowledged" || reason.startsWith("printed_"))) {
           void softRefreshDetail(selectedId);
         }
 

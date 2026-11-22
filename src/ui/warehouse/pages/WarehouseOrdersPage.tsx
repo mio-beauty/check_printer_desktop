@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../..
 import { Input } from "../../../components/ui/input";
 import { Skeleton } from "../../../components/ui/skeleton";
 
-import { formatSum, percent } from "../ui";
+import { formatSum, hasPendingReceiptUpdate, percent } from "../ui";
 import type { OrderItem } from "../types";
 import type { WarehouseQueueState } from "../useWarehouseQueue";
 import { cn } from "../../../lib/utils";
@@ -139,6 +139,9 @@ function OrderCard(props: {
   primaryLabel?: string | null;
 }) {
   const pct = percent(props.it.progress?.picked ?? 0, props.it.progress?.ordered ?? 0);
+  const update = props.it.ms_update;
+  const receiptPending = hasPendingReceiptUpdate(props.it.printed, update);
+  const hasUpdateWarning = update?.status_review_required || update?.picking_review_required || receiptPending;
   const statusUp = safeToUpper(props.it.picking_status);
   const createdAtRaw =
     (props.it as any).created_at ??
@@ -181,13 +184,14 @@ function OrderCard(props: {
             <div className="truncate text-lg font-semibold">{props.it.number ? `#${props.it.number}` : `#${props.it.id}`}</div>
           </div>
           <div className="mt-1 text-xs text-muted-foreground">Заказ создан: {createdAt ?? "—"}</div>
-          {props.it.ms_update?.updated_at && (
+          {update?.updated_at && hasUpdateWarning && (
             <div className="mt-2 flex flex-wrap gap-1.5">
-              <Badge variant="secondary" title={props.it.ms_update.fields.join(", ")}>
-                Обновлён в МойСкладе · {formatRuDateTime(props.it.ms_update.updated_at)}
+              <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800" title={update.fields.join(", ")}>
+                Обновлён в МойСкладе · {formatRuDateTime(update.updated_at)}
               </Badge>
-              {props.it.ms_update.picking_review_required && <Badge variant="destructive">Нужна сверка</Badge>}
-              {props.it.ms_update.receipt_stale && <Badge variant="secondary">Чек устарел</Badge>}
+              {update.status_review_required && <Badge variant="secondary">Проверьте статус</Badge>}
+              {update.picking_review_required && <Badge variant="destructive">Нужна сверка</Badge>}
+              {receiptPending && <Badge variant="secondary">Нужен актуальный чек</Badge>}
             </div>
           )}
         </div>

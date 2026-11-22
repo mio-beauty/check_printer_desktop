@@ -1,3 +1,9 @@
+import type { MsOrderUpdate } from "./types";
+
+export function hasPendingReceiptUpdate(printed: number, update?: MsOrderUpdate | null): boolean {
+  return Boolean(update?.receipt_stale || (update?.receipt_changed_at && printed !== 1));
+}
+
 function safeUpper(s: string | null | undefined): string {
   return String(s || "").toUpperCase();
 }

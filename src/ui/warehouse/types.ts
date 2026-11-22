@@ -3,9 +3,11 @@ export type WarehouseAuthStatus = { phone: string | null; hasToken: boolean };
 export type MsOrderUpdate = {
   updated_at: string;
   fields: string[];
+  status_review_required?: boolean;
   picking_review_required?: boolean;
   picking_changes?: Array<{ name: string; before: number; after: number; picked: number }>;
   receipt_stale?: boolean;
+  receipt_changed_at?: string;
 };
 
 export type OrderItem = {

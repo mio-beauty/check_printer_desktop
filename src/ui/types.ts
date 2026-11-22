@@ -132,7 +132,7 @@ export interface CheckPrinter {
   warehouseReasons?: () => Promise<{ reasons?: WarehouseReason[] }>;
   warehouseErrorSounds?: () => Promise<ErrorSoundsResponse>;
   warehousePickingStart?: (queueId: number) => Promise<any>;
-  warehousePickingConfirmUpdate?: (queueId: number, updatedAt: string) => Promise<{ ok: boolean }>;
+  warehousePickingConfirmUpdate?: (queueId: number, updatedAt: string, statusOnly?: boolean) => Promise<{ ok: boolean }>;
   warehousePickingScan?: (queueId: number, code: string) => Promise<WarehousePickingScanResult>;
   warehousePickingFinish?: (queueId: number, reason_code?: string | null, comment?: string | null) => Promise<any>;
   warehousePickingFail?: (queueId: number, reason_code: string, comment?: string | null) => Promise<any>;

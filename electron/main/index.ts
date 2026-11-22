@@ -1598,12 +1598,15 @@ ipcMain.handle("warehouse:pickingStart", async (_evt, queueId: number) => {
   }
 });
 
-ipcMain.handle("warehouse:pickingConfirmUpdate", async (_evt, queueId: number, updatedAt: string) => {
+ipcMain.handle("warehouse:pickingConfirmUpdate", async (_evt, queueId: number, updatedAt: string, statusOnly?: boolean) => {
   const id = Number(queueId);
   if (!Number.isSafeInteger(id) || id <= 0 || typeof updatedAt !== "string" || !updatedAt) {
     throw new Error("Укажите заказ и версию обновления.");
   }
-  return warehouseActionRequest(`/api/warehouse/orders/${id}/picking/confirm-update`, { updated_at: updatedAt });
+  return warehouseActionRequest(`/api/warehouse/orders/${id}/picking/confirm-update`, {
+    updated_at: updatedAt,
+    status_only: statusOnly === true,
+  });
 });
 
 ipcMain.handle("warehouse:pickingScan", async (_evt, payload: { queueId: number; code: string }) => {

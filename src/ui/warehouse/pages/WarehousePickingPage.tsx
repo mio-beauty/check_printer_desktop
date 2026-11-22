@@ -23,7 +23,7 @@ import { Textarea } from "../../../components/ui/textarea";
 import { cn } from "../../../lib/utils";
 import { BoxCheckIcon } from "@/components/icons";
 
-import { formatSum, percent } from "../ui";
+import { formatSum, hasPendingReceiptUpdate, percent } from "../ui";
 import type { WarehouseQueueState } from "../useWarehouseQueue";
 
 function ProgressRing(props: { value: number; className?: string }) {
@@ -283,7 +283,10 @@ export function WarehousePickingPage(props: {
   const readOnly = s.mode === "problems";
   const msUpdate = s.detail?.order.ms_update;
   const reviewRequired = Boolean(msUpdate?.picking_review_required);
+  const statusReviewRequired = Boolean(msUpdate?.status_review_required);
   const receiptStale = Boolean(msUpdate?.receipt_stale);
+  const receiptPending = hasPendingReceiptUpdate(s.detail?.order.printed ?? 0, msUpdate);
+  const orderStatus = s.detail?.order.order_data?.ms_state;
   const orderIsEmpty = s.detail?.order.order_items?.length === 0;
   const updatedAt = msUpdate?.updated_at
     ? new Date(msUpdate.updated_at).toLocaleString("ru-RU", { timeZone: "Asia/Tashkent" })
@@ -617,10 +620,22 @@ export function WarehousePickingPage(props: {
           </div>
         </div>
 
-        {updatedAt && msUpdate && (
-          <div className={cn("mx-4 mb-2 rounded-lg border px-3 py-2 text-sm", reviewRequired && "border-amber-300 bg-amber-50")}>
+        {updatedAt && msUpdate && (reviewRequired || statusReviewRequired || receiptPending) && (
+          <div className="mx-4 mb-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm">
             <p className="font-semibold">Обновлён в МойСкладе · {updatedAt}</p>
             <p className="text-muted-foreground">{msUpdate.fields.join(", ")}</p>
+            {statusReviewRequired && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <p>{typeof orderStatus === "string" && orderStatus
+                  ? "Новый статус в МойСкладе — " + orderStatus
+                  : "Проверьте новый статус в МойСкладе."}</p>
+                <Button type="button" size="sm" variant="outline" disabled={actionsDisabled}
+                  onClick={() => void s.confirmPickingUpdate(true)}>
+                  Статус проверен
+                </Button>
+              </div>
+            )}
+            {receiptPending && <p className="mt-2">Актуальный чек ещё не напечатан.</p>}
             {reviewRequired && (
               <div className="mt-2 space-y-2">
                 <p>{orderIsEmpty
