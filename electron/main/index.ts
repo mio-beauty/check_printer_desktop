@@ -2,6 +2,7 @@
 import { createRequire } from "node:module";
 import { shell } from "electron";
 import net from "node:net";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { io, Socket } from "socket.io-client";
@@ -10,6 +11,7 @@ import { buildEscPosJob } from "./escpos.js";
 import { sendToTcpPrinter } from "./lan_printer.js";
 import { loadSettings, saveSettings, Settings } from "./settings.js";
 import { listWindowsPrinters, probeWindowsPrinter, sendRawToWindowsPrinter, type UsbProbeResult } from "./windows_usb_printer.js";
+import { printOnce } from "./print_history.js";
 
 const require = createRequire(import.meta.url);
 const { autoUpdater } = require("electron-updater") as { autoUpdater: any };
@@ -447,9 +449,6 @@ function sendStatus() {
       joined: warehouseJoined,
       joinError: warehouseJoinError,
     },
-    debug: {
-      forceWarehouseHttp: Boolean(s.debug?.forceWarehouseHttp),
-    },
     backendUrl: s.backendUrl,
     backend: {
       httpOk: backendHttp.ok,
@@ -493,10 +492,6 @@ function sendStatus() {
       maximized: windowIsMaximized,
     },
   });
-}
-
-function forceWarehouseHttpTransport(): boolean {
-  return Boolean(ensureSettings().debug?.forceWarehouseHttp);
 }
 
 async function apiFetchJson(
@@ -733,12 +728,6 @@ function nextWarehouseRequestId(prefix: string): string {
 
 async function joinWarehouseSocket() {
   if (updateAvailable?.forced) return;
-  if (forceWarehouseHttpTransport()) {
-    warehouseJoined = false;
-    warehouseJoinError = null;
-    sendStatus();
-    return;
-  }
   if (!socket?.connected) {
     warehouseJoined = false;
     warehouseJoinError = null;
@@ -797,81 +786,16 @@ function leaveWarehouseSocket() {
   sendStatus();
 }
 
-async function warehouseSocketRequest(event: string, payload: Record<string, any> = {}, timeoutMs = 4000): Promise<any> {
-  if (!socket?.connected) throw new Error("warehouse realtime disconnected");
-
-  const access = await ensureWarehouseAccessToken();
-  if (!access) throw new Error("warehouse access token missing");
-
-  return await new Promise((resolve, reject) => {
-    const s: any = socket;
-    s.timeout(timeoutMs).emit(
-      event,
-      {
-        ...payload,
-        access_token: access,
-        request_id: nextWarehouseRequestId(event.replace(/[^a-z0-9]+/gi, "-").toLowerCase()),
-      },
-      (err: unknown, ack?: { ok?: boolean; data?: any; message?: string; status?: number }) => {
-        if (err) {
-          const error: AuthRefreshError = new Error("warehouse realtime timeout");
-          error.status = 0;
-          reject(error);
-          return;
-        }
-        if (!ack?.ok) {
-          const error: AuthRefreshError = new Error(String(ack?.message || "warehouse realtime request failed"));
-          error.status = ack?.status;
-          reject(error);
-          return;
-        }
-        resolve(ack.data);
-      },
-    );
-  });
-}
-
-async function warehouseActionRequest(opts: {
-  label: string;
-  event: string;
-  payload?: Record<string, any>;
-  path: string;
-  body?: any;
-  timeoutMs?: number;
-  httpTimeoutMs?: number;
-}) {
-  if (forceWarehouseHttpTransport()) {
-    log("info", `${opts.label} using HTTP transport (forceWarehouseHttp=true)`);
-  } else if (socket?.connected) {
-    try {
-      return await warehouseSocketRequest(opts.event, opts.payload || {}, opts.timeoutMs ?? 4000);
-    } catch (e) {
-      const err = e as AuthRefreshError;
-      if (err?.status === 401) {
-        saveWarehouseAuth({ accessToken: null, refreshToken: null });
-        warehouseJoined = false;
-        warehouseJoinError = "auth_expired";
-        sendWarehouseHint("auth_expired");
-        sendStatus();
-        throw new Error("Сессия истекла. Войдите заново.");
-      }
-      if (typeof err?.status === "number" && err.status > 0) {
-        throw new Error(String(err.message || err));
-      }
-      log("warn", `${opts.label} realtime failed, fallback to HTTP: ${String(err?.message || err)}`);
-    }
+async function warehouseActionRequest(path: string, body?: Record<string, unknown>) {
+  const options = { method: "POST", json: body, timeoutMs: 12000 } as const;
+  let response = await warehouseRequestJson(path, options);
+  if (response.status === 0 && typeof body?.operation_id === "string") {
+    response = await warehouseRequestJson(path, options);
   }
-
-  const res = await warehouseRequestJson(opts.path, {
-    method: "POST",
-    json: opts.body,
-    timeoutMs: opts.httpTimeoutMs ?? 12000,
-  });
-  if (!res.ok) {
-    const msg = res.json?.message || `${opts.label} failed (${res.status})`;
-    throw new Error(String(msg));
+  if (!response.ok) {
+    throw new Error(String(response.json?.message || response.json?.error || `HTTP ${response.status}`));
   }
-  return res.json;
+  return response.json;
 }
 
 function configureAutoUpdater() {
@@ -1107,37 +1031,23 @@ function connectSocket() {
   });
 
   socket.on("print_text", async (payload) => {
-    const orderId = payload?.id;
-    const number = payload?.number;
-    const printJobId = payload?.print_job_id;
-    const requestId = payload?.request_id;
-    const text = String(payload?.text || "");
+    const printJobId = String(payload?.print_job_id || "");
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(printJobId)) return;
 
-	    try {
-	      if (updateAvailable?.forced) {
-	        throw new Error("force_update_required");
-	      }
+    const result = await printOnce(app.getPath("userData"), printJobId, async () => {
+      if (updateAvailable?.forced) throw new Error("force_update_required");
+      await sendToConfiguredPrinter(String(payload?.text || ""));
+    });
 
-	      log("info", `Печать заказа id=${orderId} number=${number} job=${printJobId} attempt=${payload?.attempt}`);
-	      await sendToConfiguredPrinter(text);
-
-	      socket?.emit("printed_true", {
-	        id: orderId,
-	        number,
-        print_job_id: printJobId,
-        request_id: requestId,
-      });
-      log("info", `Печать OK id=${orderId}`);
-    } catch (e) {
-      socket?.emit("printed_false", {
-        id: orderId,
-        number,
-        error: String(e),
-        print_job_id: printJobId,
-        request_id: requestId,
-      });
-      log("error", `Печать FAIL id=${orderId}: ${String(e)}`);
-    }
+    socket?.emit(result.status === "success" ? "printed_true" : "printed_false", {
+      id: payload.id,
+      number: payload.number,
+      print_job_id: printJobId,
+      request_id: payload.request_id,
+      uncertain: result.status === "unknown",
+      error: result.error,
+    });
+    log(result.status === "success" ? "info" : "error", `Print job ${printJobId}: ${result.status}`);
   });
 }
 
@@ -1221,7 +1131,16 @@ async function createWindow() {
   log("info", "Приложение запущено");
 }
 
-app.whenReady().then(createWindow);
+if (app.requestSingleInstanceLock()) {
+  app.on("second-instance", () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  });
+  app.whenReady().then(createWindow);
+} else {
+  app.quit();
+}
 
 app.on("window-all-closed", () => {
   try {
@@ -1242,9 +1161,6 @@ ipcMain.handle("getStatus", async () => {
       connected: Boolean(socket?.connected),
       joined: warehouseJoined,
       joinError: warehouseJoinError,
-    },
-    debug: {
-      forceWarehouseHttp: Boolean(s.debug?.forceWarehouseHttp),
     },
     backendUrl: s.backendUrl,
     backend: {
@@ -1297,7 +1213,6 @@ ipcMain.handle("setSettings", async (_evt, next: Partial<Settings>) => {
   const safeNext: Partial<Settings> = {
     backendUrl: next.backendUrl,
     printerClientToken: next.printerClientToken,
-    debug: next.debug,
     printer: next.printer,
     warehouse: next.warehouse,
   };
@@ -1564,8 +1479,10 @@ ipcMain.handle("warehouse:login", async (_evt, payload: { phone: string; passwor
 });
 
 ipcMain.handle("warehouse:logout", async () => {
+  const refresh = warehouseAuth().refreshToken;
   saveWarehouseAuth({ accessToken: null, refreshToken: null });
   leaveWarehouseSocket();
+  if (refresh) void apiFetchJson("/api/auth/logout", { method: "POST", json: { refresh_token: refresh } });
   log("info", "Warehouse logout");
   sendStatus();
   return { ok: true };
@@ -1642,12 +1559,7 @@ ipcMain.handle("warehouse:errorSounds", async () => {
 ipcMain.handle("warehouse:pickingStart", async (_evt, queueId: number) => {
   log("info", `Picking start queueId=${Number(queueId)}`);
   try {
-    const json = await warehouseActionRequest({
-      label: "picking/start",
-      event: "warehouse:picking_start",
-      payload: { queue_id: Number(queueId) },
-      path: `/api/warehouse/orders/${Number(queueId)}/picking/start`,
-    });
+    const json = await warehouseActionRequest(`/api/warehouse/orders/${Number(queueId)}/picking/start`);
     log("info", `Picking start OK queueId=${Number(queueId)}`);
     return json;
   } catch (e) {
@@ -1663,13 +1575,10 @@ ipcMain.handle("warehouse:pickingScan", async (_evt, payload: { queueId: number;
 
   log("info", `Picking scan queueId=${queueId} code=${JSON.stringify(code)}`);
   try {
-    const json = await warehouseActionRequest({
-      label: "picking/scan",
-      event: "warehouse:picking_scan",
-      payload: { queue_id: queueId, code },
-      path: `/api/warehouse/orders/${queueId}/picking/scan`,
-      body: { code },
-    });
+    const json = await warehouseActionRequest(
+      `/api/warehouse/orders/${queueId}/picking/scan`,
+      { code, operation_id: randomUUID() },
+    );
     log("info", `Picking scan OK queueId=${queueId}`);
     return json;
   } catch (e) {
@@ -1697,13 +1606,7 @@ ipcMain.handle(
     if (comment) body.comment = comment;
 
     try {
-      const json = await warehouseActionRequest({
-        label: "picking/finish",
-        event: "warehouse:picking_finish",
-        payload: { queue_id: queueId, ...(reason_code ? { reason_code } : {}), ...(comment ? { comment } : {}) },
-        path: `/api/warehouse/orders/${queueId}/picking/finish`,
-        body: Object.keys(body).length ? body : undefined,
-      });
+      const json = await warehouseActionRequest(`/api/warehouse/orders/${queueId}/picking/finish`, body);
       log("info", `Picking finish OK queueId=${queueId}`);
       return json;
     } catch (e) {
@@ -1730,13 +1633,7 @@ ipcMain.handle(
     if (comment) body.comment = comment;
 
     try {
-      const json = await warehouseActionRequest({
-        label: "picking/fail",
-        event: "warehouse:picking_fail",
-        payload: { queue_id: queueId, reason_code, ...(comment ? { comment } : {}) },
-        path: `/api/warehouse/orders/${queueId}/picking/fail`,
-        body,
-      });
+      const json = await warehouseActionRequest(`/api/warehouse/orders/${queueId}/picking/fail`, body);
       log("info", `Picking fail OK queueId=${queueId}`);
       return json;
     } catch (e) {

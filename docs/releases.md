@@ -7,7 +7,7 @@
   - optional update: “Обновить” / “Не сейчас”
   - force update: только “Обновить”
 
-Best practice: **GitHub Releases (тесты, публично)** → затем **S3/CloudFront (прод)**.
+Установщики публикуются в GitHub Releases.
 
 ## Имена файлов (рекомендуемые)
 
@@ -29,13 +29,6 @@ Workflow: `.github/workflows/release.yml`
 ### Тесты (GitHub)
 - Ссылка на скачивание (для фронта):  
   `https://github.com/<OWNER>/<REPO>/releases/latest/download/MioBeauty-SkladPrinter-Setup.exe`
-
-### Прод (S3/CloudFront)
-- Базовый URL: `https://downloads.<domain>/check-printer-client/win/`
-- Файлы:
-  - `.../latest.yml`
-  - `.../MioBeauty-SkladPrinter-Setup.exe`
-  - `.../*.blockmap`
 
 ## TODO
 

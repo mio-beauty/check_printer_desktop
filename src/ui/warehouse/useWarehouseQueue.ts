@@ -21,6 +21,7 @@ export function useWarehouseQueue(opts: {
   onWrongScanError?: () => void;
 }) {
   const hasToken = Boolean(opts.auth?.hasToken);
+  const latestOrdersRequest = React.useRef(0);
   const hintRefreshTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const detailSoftRefreshTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -107,6 +108,7 @@ export function useWarehouseQueue(opts: {
     async (refreshMode: "initial" | "manual" | "background" = "manual") => {
       if (!opts.active) return;
       if (!hasToken) return;
+      const requestNumber = ++latestOrdersRequest.current;
       if (refreshMode === "background") setRefreshing(true);
       else setLoading(true);
       if (refreshMode !== "background") setError(null);
@@ -118,12 +120,14 @@ export function useWarehouseQueue(opts: {
           offset,
           problemsOnly: mode === "problems",
         })) as OrdersResponse;
-        setData(json);
+        if (requestNumber === latestOrdersRequest.current) setData(json);
       } catch (e) {
-        setError(formatWarehouseError(e));
+        if (requestNumber === latestOrdersRequest.current) setError(formatWarehouseError(e));
       } finally {
-        setLoading(false);
-        setRefreshing(false);
+        if (requestNumber === latestOrdersRequest.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     },
     [hasToken, limit, mode, offset, opts.active, qDebounced, statusFilter],
@@ -516,7 +520,7 @@ export function useWarehouseQueue(opts: {
         hintRefreshTimerRef.current = setTimeout(() => {
           void refresh("background");
           // Keep the top picking tabs in sync too (they are independent from the current filter).
-          void refreshPickingTabs();
+          if (reason !== "picking_scan") void refreshPickingTabs();
         }, 250);
       }) ??
       (() => {});

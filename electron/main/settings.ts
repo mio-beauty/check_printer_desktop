@@ -7,9 +7,6 @@ export type Settings = {
   backendUrl: string;
   printerClientToken: string | null;
   clientId: string;
-  debug?: {
-    forceWarehouseHttp?: boolean;
-  };
   deviceAuth?: {
     printerId: string | null;
     accessToken: string | null;
@@ -62,7 +59,6 @@ function defaultSettings(): Settings {
     backendUrl,
     printerClientToken,
     clientId: crypto.randomUUID(),
-    debug: { forceWarehouseHttp: false },
     deviceAuth: { printerId: null, accessToken: null, refreshToken: null },
     warehouseAuth: { phone: null, accessToken: null, refreshToken: null },
     printer: { host, port, encoding, codepage, name, mode: "lan_then_usb", usbPrinterName: null, errorSoundId: null },
@@ -85,12 +81,6 @@ export function loadSettings(): Settings {
       printerClientToken:
         (typeof parsed?.printerClientToken === "string" ? parsed.printerClientToken : "")?.trim() || defaults.printerClientToken,
       clientId: String(parsed?.clientId || defaults.clientId),
-      debug: {
-        forceWarehouseHttp:
-          parsed?.debug?.forceWarehouseHttp === undefined
-            ? Boolean(defaults.debug?.forceWarehouseHttp)
-            : Boolean(parsed.debug.forceWarehouseHttp),
-      },
       deviceAuth: {
         printerId: (typeof parsed?.deviceAuth?.printerId === "string" ? parsed.deviceAuth.printerId : "")?.trim() || null,
         accessToken: (typeof parsed?.deviceAuth?.accessToken === "string" ? parsed.deviceAuth.accessToken : "")?.trim() || null,
@@ -135,7 +125,6 @@ export function saveSettings(partial: Partial<Settings>): Settings {
   const current = loadSettings();
   const nextDeviceAuth = partial.deviceAuth !== undefined ? partial.deviceAuth : current.deviceAuth;
   const nextAuth = partial.warehouseAuth !== undefined ? partial.warehouseAuth : current.warehouseAuth;
-  const nextDebug = partial.debug !== undefined ? partial.debug : current.debug;
   const merged: Settings = {
     backendUrl: partial.backendUrl !== undefined ? String(partial.backendUrl) : current.backendUrl,
     printerClientToken:
@@ -143,9 +132,6 @@ export function saveSettings(partial: Partial<Settings>): Settings {
         ? (String(partial.printerClientToken || "").trim() || null)
         : current.printerClientToken,
     clientId: partial.clientId !== undefined ? String(partial.clientId) : current.clientId,
-    debug: {
-      forceWarehouseHttp: Boolean(nextDebug?.forceWarehouseHttp),
-    },
     deviceAuth: {
       printerId: (typeof nextDeviceAuth?.printerId === "string" ? nextDeviceAuth.printerId : "")?.trim() || null,
       accessToken: (typeof nextDeviceAuth?.accessToken === "string" ? nextDeviceAuth.accessToken : "")?.trim() || null,
