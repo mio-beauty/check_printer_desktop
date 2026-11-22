@@ -69,6 +69,7 @@ export function useWarehouseQueue(opts: {
   const finishConfirmShownRef = React.useRef<string | null>(null);
   const [finishBusy, setFinishBusy] = React.useState(false);
   const [finishError, setFinishError] = React.useState<string | null>(null);
+  const [confirmUpdateBusy, setConfirmUpdateBusy] = React.useState(false);
   const [printRetryBusy, setPrintRetryBusy] = React.useState(false);
   const [printRetryError, setPrintRetryError] = React.useState<string | null>(null);
   const [partialOpen, setPartialOpen] = React.useState(false);
@@ -209,6 +210,7 @@ export function useWarehouseQueue(opts: {
         const json = (await api.warehouseOrderDetail(id)) as OrderDetailResponse;
         if (selectedId !== id) return;
         setDetail((prev) => {
+          if (prev && prev.order.id !== id) return prev;
           if (!prev) return json;
 
           if (!json?.picking) return { ...prev, ...json };
@@ -267,7 +269,10 @@ export function useWarehouseQueue(opts: {
             prev.order.order_id === json.order.order_id &&
             prev.order.printed === json.order.printed &&
             prev.order.print_status === json.order.print_status &&
-            prev.order.print_error === json.order.print_error
+            prev.order.print_error === json.order.print_error &&
+            prev.order.ms_update?.updated_at === json.order.ms_update?.updated_at &&
+            prev.order.ms_update?.picking_review_required === json.order.ms_update?.picking_review_required &&
+            prev.order.ms_update?.receipt_stale === json.order.ms_update?.receipt_stale
               ? prev.order
               : json.order;
 
@@ -372,6 +377,29 @@ export function useWarehouseQueue(opts: {
     [opts.forcedUpdate, refresh, refreshPickingTabs, selectedId],
   );
 
+  const confirmPickingUpdate = React.useCallback(async () => {
+    const version = detail?.order.ms_update?.updated_at;
+    if (!selectedId || !version || opts.forcedUpdate || !opts.online) return;
+    setConfirmUpdateBusy(true);
+    setDetailError(null);
+    try {
+      const confirm = window.checkPrinter?.warehousePickingConfirmUpdate;
+      if (!confirm) throw new Error("Обновите Desktop для сверки состава заказа.");
+      await confirm(selectedId, version);
+      setFinishConfirmOpen(false);
+      setPartialOpen(false);
+      finishConfirmShownRef.current = null;
+      await softRefreshDetail(selectedId);
+      await refresh("background");
+      await refreshPickingTabs();
+    } catch (e) {
+      setDetailError(formatWarehouseError(e));
+      await softRefreshDetail(selectedId);
+    } finally {
+      setConfirmUpdateBusy(false);
+    }
+  }, [detail?.order.ms_update?.updated_at, opts.forcedUpdate, opts.online, refresh, refreshPickingTabs, selectedId, softRefreshDetail]);
+
   const printRetry = React.useCallback(
     async (queueId?: number) => {
       const id = Number(queueId ?? selectedId);
@@ -472,6 +500,11 @@ export function useWarehouseQueue(opts: {
 
   React.useEffect(() => {
     // Авто-завершение (с подтверждением): когда всё собрано, показываем confirm один раз на сессию.
+    if (detail?.order.ms_update?.picking_review_required) {
+      setFinishConfirmOpen(false);
+      setPartialOpen(false);
+      return;
+    }
     if (!detail?.picking?.is_active) return;
     const sessionId = String(detail.picking.id || "");
     const items = detail.picking.pick_items || detail.picking.items || [];
@@ -483,7 +516,7 @@ export function useWarehouseQueue(opts: {
     if (finishConfirmShownRef.current === sessionId) return;
     finishConfirmShownRef.current = sessionId;
     setFinishConfirmOpen(true);
-  }, [detail?.picking?.id, detail?.picking?.is_active, detail?.picking?.pick_items, detail?.picking?.items]);
+  }, [detail?.order.ms_update?.picking_review_required, detail?.picking?.id, detail?.picking?.is_active, detail?.picking?.pick_items, detail?.picking?.items]);
 
   React.useEffect(() => {
     if (!opts.active) return;
@@ -514,6 +547,9 @@ export function useWarehouseQueue(opts: {
         if (!reason) return;
         // `auth_expired` is handled globally in `src/ui/App.tsx`.
         if (reason === "auth_expired") return;
+        if (selectedId !== null && (reason === "order_updated" || reason.startsWith("printed_"))) {
+          void softRefreshDetail(selectedId);
+        }
 
         // Debounced "invalidate + refresh": safest way to keep paging/search consistent.
         if (hintRefreshTimerRef.current) clearTimeout(hintRefreshTimerRef.current);
@@ -532,7 +568,7 @@ export function useWarehouseQueue(opts: {
         hintRefreshTimerRef.current = null;
       }
     };
-  }, [hasToken, opts.active, opts.forcedUpdate, opts.online, refresh, refreshPickingTabs]);
+  }, [hasToken, opts.active, opts.forcedUpdate, opts.online, refresh, refreshPickingTabs, selectedId, softRefreshDetail]);
 
   const onLogin = async () => {
     setLoginError(null);
@@ -621,6 +657,8 @@ export function useWarehouseQueue(opts: {
     finishBusy,
     finishError,
     pickingFinish,
+    confirmPickingUpdate,
+    confirmUpdateBusy,
     printRetryBusy,
     printRetryError,
     printRetry,

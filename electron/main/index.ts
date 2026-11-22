@@ -1,13 +1,14 @@
-﻿import { BrowserWindow, Menu, app, globalShortcut, ipcMain } from "electron";
+﻿import { BrowserWindow, Menu, app, globalShortcut, ipcMain, nativeImage } from "electron";
 import { createRequire } from "node:module";
 import { shell } from "electron";
+import { readFileSync } from "node:fs";
 import net from "node:net";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { io, Socket } from "socket.io-client";
 import semver from "semver";
-import { buildEscPosJob } from "./escpos.js";
+import { buildEscPosJob, buildEscPosRaster } from "./escpos.js";
 import { sendToTcpPrinter } from "./lan_printer.js";
 import { loadSettings, saveSettings, Settings } from "./settings.js";
 import { listWindowsPrinters, probeWindowsPrinter, sendRawToWindowsPrinter, type UsbProbeResult } from "./windows_usb_printer.js";
@@ -335,10 +336,31 @@ function ensureSettings(): Settings {
   return settings;
 }
 
-async function sendToConfiguredPrinter(rawText: string): Promise<void> {
+let mioReceiptLogo: Buffer | null | undefined;
+
+function getMioReceiptLogo(): Buffer | undefined {
+  if (mioReceiptLogo === undefined) {
+    try {
+      const png = readFileSync(path.join(app.getAppPath(), "electron/assets/mio-beauty.png"));
+      const image = nativeImage.createFromBuffer(png);
+      if (image.isEmpty()) throw new Error("Не удалось декодировать PNG");
+      mioReceiptLogo = buildEscPosRaster(image.toBitmap(), image.getSize());
+    } catch (error) {
+      log("warn", `Логотип чека MIO недоступен: ${String(error)}`);
+      mioReceiptLogo = null;
+    }
+  }
+  return mioReceiptLogo ?? undefined;
+}
+
+async function sendToConfiguredPrinter(rawText: string, receiptBrand: unknown): Promise<void> {
   const s = ensureSettings();
   const mode = s.printer.mode || "lan_then_usb";
-  const job = buildEscPosJob(rawText, { encoding: s.printer.encoding, codepage: s.printer.codepage ?? 17 });
+  const job = buildEscPosJob(rawText, {
+    encoding: s.printer.encoding,
+    codepage: s.printer.codepage ?? 17,
+    logo: receiptBrand === "mio" ? getMioReceiptLogo() : undefined,
+  });
 
   const lanCheckedAtMs = printerReachability.checkedAt ? Date.parse(printerReachability.checkedAt) : 0;
   const lanFresh = Boolean(lanCheckedAtMs && Date.now() - lanCheckedAtMs < 12_000);
@@ -1036,7 +1058,7 @@ function connectSocket() {
 
     const result = await printOnce(app.getPath("userData"), printJobId, async () => {
       if (updateAvailable?.forced) throw new Error("force_update_required");
-      await sendToConfiguredPrinter(String(payload?.text || ""));
+      await sendToConfiguredPrinter(String(payload?.text || ""), payload?.receipt_brand);
     });
 
     socket?.emit(result.status === "success" ? "printed_true" : "printed_false", {
@@ -1312,7 +1334,11 @@ ipcMain.handle("usb:testPrint", async (_evt, text: string | undefined) => {
       "Спасибо!",
     ].join("\n");
 
-  const job = buildEscPosJob(sample, { encoding: s.printer.encoding });
+  const job = buildEscPosJob(sample, {
+    encoding: s.printer.encoding,
+    codepage: s.printer.codepage ?? 17,
+    logo: text ? undefined : getMioReceiptLogo(),
+  });
   await sendRawToWindowsPrinter({ printerName: usbName, payload: job, docName: "Mio beauty: тест (USB)" });
   log("info", "Тестовая печать (USB) отправлена");
   // Refresh probe after successful job submission so UI reflects current device state.
@@ -1350,7 +1376,11 @@ ipcMain.handle("testPrint", async (_evt, text: string | undefined) => {
     throw new Error(`printer_unreachable: ${printerReachability.error || "unknown"}`);
   }
 
-  const job = buildEscPosJob(sample, { encoding: s.printer.encoding });
+  const job = buildEscPosJob(sample, {
+    encoding: s.printer.encoding,
+    codepage: s.printer.codepage ?? 17,
+    logo: text ? undefined : getMioReceiptLogo(),
+  });
   await sendToTcpPrinter(job, { host: ep.host, port: ep.port, timeoutMs: softFail ? 2500 : 5000 });
   log("info", "Тестовая печать отправлена");
   return { ok: true };
@@ -1566,6 +1596,14 @@ ipcMain.handle("warehouse:pickingStart", async (_evt, queueId: number) => {
     log("error", `Picking start failed queueId=${Number(queueId)}: ${String(e)}`);
     throw e;
   }
+});
+
+ipcMain.handle("warehouse:pickingConfirmUpdate", async (_evt, queueId: number, updatedAt: string) => {
+  const id = Number(queueId);
+  if (!Number.isSafeInteger(id) || id <= 0 || typeof updatedAt !== "string" || !updatedAt) {
+    throw new Error("Укажите заказ и версию обновления.");
+  }
+  return warehouseActionRequest(`/api/warehouse/orders/${id}/picking/confirm-update`, { updated_at: updatedAt });
 });
 
 ipcMain.handle("warehouse:pickingScan", async (_evt, payload: { queueId: number; code: string }) => {

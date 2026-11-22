@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld("checkPrinter", {
   warehouseReasons: () => ipcRenderer.invoke("warehouse:reasons"),
   warehouseErrorSounds: () => ipcRenderer.invoke("warehouse:errorSounds"),
   warehousePickingStart: (queueId) => ipcRenderer.invoke("warehouse:pickingStart", queueId),
+  warehousePickingConfirmUpdate: (queueId, updatedAt) => ipcRenderer.invoke("warehouse:pickingConfirmUpdate", queueId, updatedAt),
   warehousePickingScan: (queueId, code) => ipcRenderer.invoke("warehouse:pickingScan", { queueId, code }),
   warehousePickingFinish: (queueId, reason_code, comment) =>
     ipcRenderer.invoke("warehouse:pickingFinish", { queueId, reason_code, comment }),

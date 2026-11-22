@@ -181,7 +181,15 @@ function OrderCard(props: {
             <div className="truncate text-lg font-semibold">{props.it.number ? `#${props.it.number}` : `#${props.it.id}`}</div>
           </div>
           <div className="mt-1 text-xs text-muted-foreground">Заказ создан: {createdAt ?? "—"}</div>
-
+          {props.it.ms_update?.updated_at && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Badge variant="secondary" title={props.it.ms_update.fields.join(", ")}>
+                Обновлён в МойСкладе · {formatRuDateTime(props.it.ms_update.updated_at)}
+              </Badge>
+              {props.it.ms_update.picking_review_required && <Badge variant="destructive">Нужна сверка</Badge>}
+              {props.it.ms_update.receipt_stale && <Badge variant="secondary">Чек устарел</Badge>}
+            </div>
+          )}
         </div>
 
 

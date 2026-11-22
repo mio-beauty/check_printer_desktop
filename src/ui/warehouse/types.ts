@@ -1,5 +1,13 @@
 export type WarehouseAuthStatus = { phone: string | null; hasToken: boolean };
 
+export type MsOrderUpdate = {
+  updated_at: string;
+  fields: string[];
+  picking_review_required?: boolean;
+  picking_changes?: Array<{ name: string; before: number; after: number; picked: number }>;
+  receipt_stale?: boolean;
+};
+
 export type OrderItem = {
   id: number;
   number: string;
@@ -12,6 +20,7 @@ export type OrderItem = {
   printed: 0 | 1;
   print_status?: "not_printed" | "printed" | "print_failed" | string;
   print_error?: string | null;
+  ms_update?: MsOrderUpdate | null;
   picking_status: "TO_PICK" | "PICKING" | "PICKED" | "PARTIALLY_PICKED" | "PICK_FAILED" | string;
   active_session_id: string | null;
   progress: { picked: number; ordered: number };
@@ -52,6 +61,7 @@ export type OrderDetailResponse = {
     printed: 0 | 1;
     print_status?: "not_printed" | "printed" | "print_failed" | string;
     print_error?: string | null;
+    ms_update?: MsOrderUpdate | null;
   };
   picking: null | {
     id: string;

@@ -21,7 +21,7 @@
 
 1) Backend формирует текст чека (форматированный, с командами `!BIG`, `!CENTER`, …).
 2) Backend отправляет на клиента событие `print_text`:
-   - `{ id, number, text, print_job_id, request_id, attempt, ... }`
+   - `{ id, number, text, receipt_brand, print_job_id, request_id, attempt, ... }`
 3) Клиент печатает локально:
    - LAN: TCP `host:port` (обычно `9100`), отправка ESC/POS байтов
 4) Клиент отправляет ack:

@@ -1,7 +1,7 @@
 {
   "name": "check_printer_desktop",
   "private": true,
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "Windows desktop client (Electron + React) for check printing",
   "main": "dist-electron/main/index.js",
   "author": "",
@@ -73,7 +73,8 @@
     },
     "files": [
       "dist/**",
-      "dist-electron/**"
+      "dist-electron/**",
+      "electron/assets/mio-beauty.png"
     ],
     "extraResources": [],
     "publish": [

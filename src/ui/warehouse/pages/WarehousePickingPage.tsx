@@ -281,13 +281,22 @@ export function WarehousePickingPage(props: {
 
   const sessionActive = Boolean(s.selectedId !== null && s.detail?.picking?.is_active);
   const readOnly = s.mode === "problems";
+  const msUpdate = s.detail?.order.ms_update;
+  const reviewRequired = Boolean(msUpdate?.picking_review_required);
+  const receiptStale = Boolean(msUpdate?.receipt_stale);
+  const orderIsEmpty = s.detail?.order.order_items?.length === 0;
+  const updatedAt = msUpdate?.updated_at
+    ? new Date(msUpdate.updated_at).toLocaleString("ru-RU", { timeZone: "Asia/Tashkent" })
+    : null;
 
   const printStatus = s.detail?.order
     ? s.detail.order.print_status ?? (s.detail.order.printed === 1 ? "printed" : "not_printed")
     : null;
   const printError = s.detail?.order?.print_error ?? null;
   const printUi =
-    printStatus === "printed"
+    receiptStale
+      ? { label: "Чек устарел", className: "border-orange-200 bg-orange-50 text-orange-700" }
+      : printStatus === "printed"
       ? { label: "Напечатан", className: "border-emerald-200 bg-emerald-50 text-emerald-700" }
       : printStatus === "print_failed"
         ? { label: "Ошибка печати", className: "border-red-200 bg-red-50 text-red-700" }
@@ -302,6 +311,7 @@ export function WarehousePickingPage(props: {
     !props.forcedUpdate &&
     !s.scanBusy &&
     !s.finishBusy &&
+    !reviewRequired &&
     !s.finishConfirmOpen &&
     !s.partialOpen;
 
@@ -529,12 +539,12 @@ export function WarehousePickingPage(props: {
     return sum;
   }, [scannedUi, unitPriceByAssortmentId]);
 
-  const actionsDisabled = props.offline || props.forcedUpdate || s.scanBusy || s.finishBusy;
+  const actionsDisabled = props.offline || props.forcedUpdate || s.scanBusy || s.finishBusy || s.confirmUpdateBusy;
 
   const complete = itemsForUi.length > 0 && notScanned.length === 0;
 
   const handleFinish = () => {
-    if (readOnly) return;
+    if (readOnly || reviewRequired) return;
     if (!sessionActive) return;
     if (complete) s.setFinishConfirmOpen(true);
     else s.setPartialOpen(true);
@@ -591,21 +601,48 @@ export function WarehousePickingPage(props: {
               </div>
             )}
 
-            {printStatus === "print_failed" ? (
+            {printStatus === "print_failed" || receiptStale ? (
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={() => void s.printRetry?.()}
-                disabled={actionsDisabled || s.printRetryBusy}
+                disabled={actionsDisabled || s.printRetryBusy || reviewRequired}
                 className="h-9 gap-2 border-[#EDEDED] bg-white text-black hover:bg-black/5"
               >
                 <RotateCw className={cn("h-4 w-4", s.printRetryBusy ? "animate-spin" : "")} aria-hidden="true" />
-                Повторить
+                {receiptStale ? "Перепечатать чек" : "Повторить"}
               </Button>
             ) : null}
           </div>
         </div>
+
+        {updatedAt && msUpdate && (
+          <div className={cn("mx-4 mb-2 rounded-lg border px-3 py-2 text-sm", reviewRequired && "border-amber-300 bg-amber-50")}>
+            <p className="font-semibold">Обновлён в МойСкладе · {updatedAt}</p>
+            <p className="text-muted-foreground">{msUpdate.fields.join(", ")}</p>
+            {reviewRequired && (
+              <div className="mt-2 space-y-2">
+                <p>{orderIsEmpty
+                  ? "В МойСкладе удалены все позиции. Уберите отсканированные товары из заказа."
+                  : sessionActive
+                    ? "Сверьте отсканированные товары с новым составом и уберите лишние единицы."
+                    : "Состав изменился после завершения сборки. Сверьте и отсканируйте заказ заново."}</p>
+                {Boolean(msUpdate.picking_changes?.length) && (
+                  <ul className="max-h-32 space-y-1 overflow-auto">
+                    {msUpdate.picking_changes?.map((item, index) => (
+                      <li key={index}>{item.name}: {item.before} → {item.after}, отсканировано {item.picked}</li>
+                    ))}
+                  </ul>
+                )}
+                <Button type="button" size="sm" variant="outline" disabled={actionsDisabled || readOnly}
+                  onClick={() => void s.confirmPickingUpdate()}>
+                  {orderIsEmpty ? "Подтвердить пустой состав" : sessionActive ? "Состав сверён, применить" : "Начать повторную сборку"}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="grid gap-1.5 px-4 py-3">
           <div className="flex items-center gap-3">
@@ -622,7 +659,7 @@ export function WarehousePickingPage(props: {
                   }
                 }}
                 placeholder="Готово к сканированию"
-                disabled={readOnly || props.offline || props.forcedUpdate || s.scanBusy}
+                disabled={readOnly || actionsDisabled || reviewRequired}
                 className="h-12 rounded-lg border-[#EDEDED] bg-white pl-10 text-base shadow-none placeholder:text-[#747479] focus-visible:ring-black"
                 autoFocus
                 onBlur={() => {
@@ -635,7 +672,7 @@ export function WarehousePickingPage(props: {
             <Button
               type="button"
               onClick={() => void s.pickingScan(s.scanCode)}
-              disabled={readOnly || props.offline || props.forcedUpdate || s.scanBusy || !s.scanCode.trim()}
+              disabled={readOnly || actionsDisabled || reviewRequired || !s.scanCode.trim()}
               className={cn(
                 "h-12 rounded-lg px-6 text-base",
                 !s.scanCode.trim() || readOnly || props.offline || props.forcedUpdate || s.scanBusy
@@ -761,7 +798,7 @@ export function WarehousePickingPage(props: {
                 <Button
                   className="h-11 w-full rounded-xl bg-violet-600 text-white hover:bg-violet-700"
                   onClick={handleFinish}
-                  disabled={readOnly || !sessionActive || actionsDisabled || totalPositions === 0}
+                  disabled={readOnly || reviewRequired || !sessionActive || actionsDisabled || totalPositions === 0}
                 >
                   Завершить сборку
                 </Button>
