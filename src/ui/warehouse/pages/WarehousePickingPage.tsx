@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import { Badge, ChevronLeft, ImageOff, Info, RotateCw, ScanLine } from "lucide-react";
+import { ChevronLeft, ImageOff, Info, RotateCw, ScanLine } from "lucide-react";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 
 import {
@@ -14,7 +14,8 @@ import {
   AlertDialogTitle,
 } from "../../../components/ui/alert-dialog";
 import { Button } from "../../../components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card";
+import { Badge } from "../../../components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
 import { Select } from "../../../components/ui/select";
@@ -165,8 +166,81 @@ function TesterBadgeMuted() {
 }
 
 function toFiniteNumber(v: unknown): number | null {
+  if (typeof v !== "number" && (typeof v !== "string" || !v.trim())) return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+function OrderPaymentDetails({ payments, items, deliveryPrice, orderTotal }: {
+  payments: unknown;
+  items: ReadonlyArray<{ sum?: unknown } | null>;
+  deliveryPrice: unknown;
+  orderTotal: unknown;
+}) {
+  const methods: Array<[string, number]> = [];
+  if (payments && typeof payments === "object" && !Array.isArray(payments)) {
+    for (const [name, value] of Object.entries(payments)) {
+      const amount = toFiniteNumber(value);
+      if (name.trim() && amount !== null) methods.push([name, amount]);
+    }
+  }
+
+  const lineAmounts = items.map((item) => toFiniteNumber(item?.sum));
+  const goods = lineAmounts.length && lineAmounts.every((amount) => amount !== null)
+    ? lineAmounts.reduce((sum, amount) => sum + amount, 0)
+    : toFiniteNumber(orderTotal);
+  const delivery = toFiniteNumber(deliveryPrice) ?? 0;
+  const total = goods === null ? null : goods + delivery;
+  const paidAmount = methods.reduce((sum, [, amount]) => sum + amount, 0);
+  const paid = total !== null && total > 0 ? paidAmount >= total : null;
+  const money = (amount: number | null) => amount === null ? "—" : `${formatSum(amount)} сум`;
+
+  return (
+    <section aria-label="Оплата">
+      <Card className="m-3 rounded-xl border border-border shadow-sm">
+        <CardHeader className="flex-row items-center justify-between gap-3 space-y-0 p-4">
+          <CardTitle>Оплата</CardTitle>
+          {paid !== null && (
+            <Badge variant="secondary" className={cn(
+              "shrink-0 rounded-md",
+              paid ? "bg-green-100 text-green-800" : "bg-red-100 text-red-700",
+            )}>
+              {paid ? "Оплачен" : "Не оплачен"}
+            </Badge>
+          )}
+        </CardHeader>
+        <CardContent className="space-y-3 p-4 pt-0 text-sm">
+          {methods.length > 0 && (
+            <div>
+              <h4 className="mb-2 text-muted-foreground">Тип оплаты</h4>
+              <dl className="space-y-1.5">
+                {methods.map(([name, amount]) => (
+                  <div key={name} className="flex items-baseline justify-between gap-3">
+                    <dt className="min-w-0 break-words">{name}</dt>
+                    <dd className="shrink-0 font-medium tabular-nums">{money(amount)}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          )}
+          <dl className={cn("space-y-2", methods.length > 0 && "border-t border-border pt-3")}>
+            <div className="flex items-baseline justify-between gap-3">
+              <dt className="text-muted-foreground">Товары</dt>
+              <dd className="shrink-0 font-medium tabular-nums">{money(goods)}</dd>
+            </div>
+            <div className="flex items-baseline justify-between gap-3">
+              <dt className="text-muted-foreground">Стоимость доставки</dt>
+              <dd className="shrink-0 font-medium tabular-nums">{money(delivery)}</dd>
+            </div>
+            <div className="flex items-baseline justify-between gap-3 pt-1">
+              <dt className="text-muted-foreground">К оплате</dt>
+              <dd className="shrink-0 text-lg font-bold tabular-nums">{money(total)}</dd>
+            </div>
+          </dl>
+        </CardContent>
+      </Card>
+    </section>
+  );
 }
 
 function PickItemCard(props: {
@@ -368,8 +442,9 @@ export function WarehousePickingPage(props: {
 
   const pickingItems = s.detail?.picking?.pick_items || s.detail?.picking?.items || [];
 
-  const orderItems = (s.detail?.order?.order_items as any[] | undefined) || [];
-  const orderDataItems = ((s.detail?.order as any)?.order_data?.items as any[] | undefined) || [];
+  const orderData = s.detail?.order.order_data;
+  const orderItems = s.detail?.order.order_items ?? [];
+  const orderDataItems: any[] = Array.isArray(orderData?.items) ? orderData.items : [];
   const catalogSourceItems = React.useMemo(() => [...orderItems, ...orderDataItems], [orderDataItems, orderItems]);
 
   const groupByAssortmentId = React.useMemo(() => {
@@ -517,7 +592,7 @@ export function WarehousePickingPage(props: {
 
   const orderNumberValue = s.detail?.order?.number ?? cachedOrderNumber;
   const orderNumber = orderNumberValue ? `#${orderNumberValue}` : `#${s.selectedId}`;
-  const totalSum = s.detail?.order?.order_data?.total ?? null;
+  const totalSum = orderData?.total ?? null;
 
   const readySum = React.useMemo(() => {
     if (scannedUi.length === 0) return 0;
@@ -712,16 +787,16 @@ export function WarehousePickingPage(props: {
           ) : null}
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-1 p-4 gap-6 lg:grid-cols-[1fr_380px]">
-          <div className="min-h-0">
-            <div className="flex items-center gap-2 py-3 gap-2">
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 p-4 max-lg:overflow-y-auto lg:grid-cols-[minmax(0,1fr)_380px]">
+          <div className="flex min-h-0 flex-col">
+            <div className="flex shrink-0 items-center gap-2 py-3">
               <div className="text-[18px] font-semibold">К сканированию</div>
               <div className="rounded-full justify-center px-1.5 py-0 bg-[#F8F8F8] text-sm text-[#757575] font-medium">
                 {notScanned.length}
               </div>
             </div>
 
-            <div className="min-h-0 h-full">
+            <div className="min-h-0 flex-1 lg:overflow-y-auto">
               {s.detailBusy ? (
                 <div className="grid gap-2" ref={toScanListRef}>
                   {Array.from({ length: 6 }).map((_, idx) => (
@@ -772,10 +847,18 @@ export function WarehousePickingPage(props: {
           </div>
 
           <Card className="flex min-h-0 flex-col rounded-[16px] border border-[#EDEDED] shadow-none">
-            <CardHeader className="flex gap-2 py-3 gap-2 p-4 pb-2">
-              <CardTitle className="text-[18px] font-semibold">Готово к отправке</CardTitle>
-            </CardHeader>
-            <CardContent className="min-h-0 flex-1 overflow-auto p-0 gap-0">
+            <CardContent className="min-h-0 flex-1 p-0 lg:overflow-y-auto">
+              {orderData && (
+                <OrderPaymentDetails
+                  payments={orderData.payments}
+                  items={previewSource}
+                  deliveryPrice={orderData.delivery?.price}
+                  orderTotal={orderData.total}
+                />
+              )}
+              <CardHeader className="p-4 pb-2">
+                <CardTitle>Готово к отправке</CardTitle>
+              </CardHeader>
               <div className="flex w-full flex-col gap-0" ref={readyListRef}>
                 {s.detailBusy ? (
                   Array.from({ length: 5 }).map((_, idx) => (
@@ -794,14 +877,14 @@ export function WarehousePickingPage(props: {
                 )}
               </div>
             </CardContent>
-            <div className="p-0">
+            <div className="shrink-0">
               <div className="grid gap-2 p-3 text-[16px] border-t border-[#EDEDED]">
                 <div className="flex items-center justify-between">
                   <div className="text-black/50">Собрано:</div>
                   <div className="font-semibold">{collectedLabel}</div>
                 </div>
                 <div className="flex items-center justify-between">
-                  <div className="text-black/50">Сумма товаров:</div>
+                  <div className="text-black/50">Сумма собранных товаров</div>
                   <div className="font-semibold">
                     {readySum === null ? "—" : `${formatSum(readySum)} сум`}
                     {complete && totalSum !== null ? <span className="ml-2 text-xs font-medium text-black/40">{`из ${formatSum(totalSum)} сум`}</span> : null}
@@ -809,7 +892,7 @@ export function WarehousePickingPage(props: {
                 </div>
               </div>
 
-              <div className="mt-4 grid gap-2 p-3 border-t border-[#EDEDED]">
+              <div className="grid gap-2 border-t border-[#EDEDED] p-3">
                 <Button
                   className="h-11 w-full rounded-xl bg-violet-600 text-white hover:bg-violet-700"
                   onClick={handleFinish}
