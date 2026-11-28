@@ -10,6 +10,8 @@ export default function App() {
   const [logs, setLogs] = React.useState<LogEntry[]>([]);
   const [update, setUpdate] = React.useState<UpdateState>({ kind: "idle" });
   const [warehouseHint, setWarehouseHint] = React.useState<string | null>(null);
+  const [courierAccess, setCourierAccess] = React.useState<"unknown" | "checking" | "allowed" | "denied" | "error">("unknown");
+  const courierAccessRequest = React.useRef(0);
   const forcedUpdate = Boolean(status?.update?.forced || (update.kind === "available" && update.forced));
   const connectionState = React.useMemo<ConnectionState>(() => {
     if (status?.joinError) {
@@ -83,6 +85,33 @@ export default function App() {
       offHint();
     };
   }, []);
+
+  const checkCourierAccess = React.useCallback(async () => {
+    const requestId = ++courierAccessRequest.current;
+    if (!status?.warehouseAuth?.hasToken) {
+      setCourierAccess("unknown");
+      return;
+    }
+
+    setCourierAccess("checking");
+    const check = window.checkPrinter?.couriersAdminStatus;
+    if (!check) {
+      setCourierAccess("error");
+      return;
+    }
+
+    try {
+      const result = await check();
+      if (requestId !== courierAccessRequest.current) return;
+      setCourierAccess(result.ok ? (result.data.isAdmin ? "allowed" : "denied") : result.error.status === 403 ? "denied" : "error");
+    } catch {
+      if (requestId === courierAccessRequest.current) setCourierAccess("error");
+    }
+  }, [status?.warehouseAuth?.hasToken]);
+
+  React.useEffect(() => {
+    void checkCourierAccess();
+  }, [checkCourierAccess]);
 
   React.useEffect(() => {
     const u = status?.update;
@@ -199,6 +228,8 @@ export default function App() {
       update={update}
       setUpdate={setUpdate}
       warehouseHint={warehouseHint}
+      courierAccess={courierAccess}
+      onCheckCourierAccess={checkCourierAccess}
       onTestPrint={testPrint}
       onCheckUpdates={checkUpdates}
       onStartUpdate={startUpdate}

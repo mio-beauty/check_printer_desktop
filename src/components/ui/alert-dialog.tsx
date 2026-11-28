@@ -6,6 +6,8 @@ import { Button } from "./button";
 type AlertDialogContextValue = {
   open: boolean;
   setOpen: (v: boolean) => void;
+  titleId: string;
+  descriptionId: string;
 };
 
 const AlertDialogContext = React.createContext<AlertDialogContextValue | null>(null);
@@ -21,7 +23,14 @@ export function AlertDialog(props: {
   onOpenChange: (v: boolean) => void;
   children: React.ReactNode;
 }) {
-  const ctx = React.useMemo(() => ({ open: props.open, setOpen: props.onOpenChange }), [props.open, props.onOpenChange]);
+  const id = React.useId();
+  const onOpenChangeRef = React.useRef(props.onOpenChange);
+  onOpenChangeRef.current = props.onOpenChange;
+  const setOpen = React.useCallback((open: boolean) => onOpenChangeRef.current(open), []);
+  const ctx = React.useMemo(
+    () => ({ open: props.open, setOpen, titleId: `${id}-title`, descriptionId: `${id}-description` }),
+    [id, props.open, setOpen],
+  );
   return <AlertDialogContext.Provider value={ctx}>{props.children}</AlertDialogContext.Provider>;
 }
 
@@ -40,13 +49,62 @@ export function AlertDialogTrigger(props: React.ButtonHTMLAttributes<HTMLButtonE
 }
 
 export function AlertDialogContent(props: React.HTMLAttributes<HTMLDivElement>) {
-  const { open, setOpen } = useAlertDialog();
+  const { open, setOpen, titleId, descriptionId } = useAlertDialog();
+  const dialogRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusableSelector = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const focusDialog = () => {
+      const first = dialogRef.current?.querySelector<HTMLElement>(focusableSelector);
+      (first ?? dialogRef.current)?.focus();
+    };
+    const frame = window.requestAnimationFrame(focusDialog);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setOpen(false);
+        return;
+      }
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(focusableSelector));
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialogRef.current.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !dialogRef.current.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !dialogRef.current.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener("keydown", onKeyDown);
+      previousFocus?.focus();
+    };
+  }, [open, setOpen]);
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50">
       <div className="fixed inset-0 bg-black/40" onClick={() => setOpen(false)} />
-      <div className="fixed left-1/2 top-1/2 w-[min(520px,calc(100%-24px))] -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-background p-4 shadow-lg">
-        <div {...props} />
+      <div
+        {...props}
+        ref={dialogRef}
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        tabIndex={-1}
+        className={cn("fixed left-1/2 top-1/2 w-[min(520px,calc(100%-24px))] -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-background p-4 shadow-lg", props.className)}
+      >
+        {props.children}
       </div>
     </div>
   );
@@ -57,11 +115,13 @@ export function AlertDialogHeader(props: React.HTMLAttributes<HTMLDivElement>) {
 }
 
 export function AlertDialogTitle(props: React.HTMLAttributes<HTMLHeadingElement>) {
-  return <h2 {...props} className={cn("text-base font-semibold", props.className)} />;
+  const { titleId } = useAlertDialog();
+  return <h2 {...props} id={props.id ?? titleId} className={cn("text-base font-semibold", props.className)} />;
 }
 
 export function AlertDialogDescription(props: React.HTMLAttributes<HTMLParagraphElement>) {
-  return <p {...props} className={cn("text-sm text-muted-foreground", props.className)} />;
+  const { descriptionId } = useAlertDialog();
+  return <p {...props} id={props.id ?? descriptionId} className={cn("text-sm text-muted-foreground", props.className)} />;
 }
 
 export function AlertDialogFooter(props: React.HTMLAttributes<HTMLDivElement>) {

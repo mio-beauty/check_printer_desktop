@@ -4,6 +4,14 @@ import type {
   OrdersResponse,
   WarehouseReason,
 } from "./warehouse/types";
+import type {
+  CourierAdminStatus,
+  CourierApiResult,
+  CourierCreatePayload,
+  CourierOption,
+  CourierUpdatePayload,
+  CourierUser,
+} from "./couriers/types";
 
 export type PrinterStatus = {
   connected: boolean;
@@ -136,6 +144,13 @@ export interface CheckPrinter {
   warehousePickingScan?: (queueId: number, code: string) => Promise<WarehousePickingScanResult>;
   warehousePickingFinish?: (queueId: number, reason_code?: string | null, comment?: string | null) => Promise<any>;
   warehousePickingFail?: (queueId: number, reason_code: string, comment?: string | null) => Promise<any>;
+  couriersAdminStatus?: () => Promise<CourierApiResult<CourierAdminStatus>>;
+  couriersList?: () => Promise<CourierApiResult<CourierUser[]>>;
+  couriersOptions?: () => Promise<CourierApiResult<CourierOption[]>>;
+  couriersGet?: (userId: number) => Promise<CourierApiResult<CourierUser>>;
+  couriersCreate?: (payload: CourierCreatePayload) => Promise<CourierApiResult<CourierUser>>;
+  couriersUpdate?: (userId: number, payload: CourierUpdatePayload) => Promise<CourierApiResult<{ success: boolean }>>;
+  couriersDeactivate?: (userId: number) => Promise<CourierApiResult<{ success: boolean }>>;
   windowMinimize?: () => Promise<void>;
   windowToggleMaximize?: () => Promise<void>;
   windowClose?: () => Promise<void>;

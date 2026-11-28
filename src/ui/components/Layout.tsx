@@ -16,6 +16,7 @@ type LayoutProps = {
   update?: UpdateState;
   onStartUpdate?: () => Promise<void>;
   showSidebar?: boolean;
+  courierAdmin?: boolean;
   children: React.ReactNode;
 };
 
@@ -29,6 +30,7 @@ export function Layout({
   update,
   onStartUpdate,
   showSidebar = true,
+  courierAdmin = false,
   children,
 }: LayoutProps) {
   void forcedUpdate;
@@ -65,6 +67,7 @@ export function Layout({
             <AppSidebar
               warehouseName={status?.warehouse?.name ?? null}
               warehousePhone={status?.warehouseAuth?.phone ?? null}
+              showCouriers={courierAdmin}
               onLogout={handleLogout}
             />
           ) : undefined

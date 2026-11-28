@@ -1,5 +1,6 @@
 ﻿import { BrowserWindow, Menu, app, globalShortcut, ipcMain, nativeImage } from "electron";
 import { createRequire } from "node:module";
+import type { IpcMainInvokeEvent } from "electron";
 import { shell } from "electron";
 import { readFileSync } from "node:fs";
 import net from "node:net";
@@ -654,6 +655,7 @@ async function ensureDeviceAccessToken(opts: { force?: boolean } = {}): Promise<
 }
 
 let warehouseRefreshPromise: Promise<string> | null = null;
+let courierProfilePromise: Promise<CourierApiResult<any>> | null = null;
 
 async function ensureWarehouseAccessToken(opts: { force?: boolean } = {}): Promise<string | null> {
   const auth = warehouseAuth();
@@ -742,6 +744,152 @@ async function warehouseRequestJson(
     }
     throw new Error(`Не удалось обновить сессию: ${String(err?.message || err)}`);
   }
+}
+
+type CourierApiError = { status: number; message: string; code?: string };
+type CourierApiResult<T> = { ok: true; data: T } | { ok: false; error: CourierApiError };
+type CourierRecord = {
+  id: number;
+  phone: string | null;
+  email: string | null;
+  display_name: string | null;
+  role: string;
+  is_active: boolean;
+  created_at?: string;
+  updated_at: string | null;
+};
+type CourierOption = { id: string; name: string };
+type CourierUpdatePayload = {
+  phone?: string;
+  email?: string | null;
+  display_name?: string | null;
+  password?: string;
+  is_active?: boolean;
+};
+
+function isTrustedCourierIpcSender(event: IpcMainInvokeEvent): boolean {
+  if (!mainWindow || event.sender !== mainWindow.webContents || event.senderFrame !== event.sender.mainFrame) return false;
+  try {
+    const frameUrl = new URL(event.senderFrame.url);
+    if (isDev()) return frameUrl.protocol === "http:" && frameUrl.hostname === "127.0.0.1" && frameUrl.port === "5173";
+    return frameUrl.protocol === "file:" && path.resolve(fileURLToPath(frameUrl)) === path.resolve(__dirname, "../../dist/index.html");
+  } catch {
+    return false;
+  }
+}
+
+function courierApiError(status: number, json: any, path: string): CourierApiError {
+  const raw = typeof json?.raw === "string" ? json.raw : "";
+  const isHtmlError = /<!doctype\s+html|<html[\s>]/i.test(raw);
+  const routeNotFound = status === 404 && isHtmlError;
+  const message = routeNotFound
+    ? `Backend API route was not found: ${path}`
+    : String(json?.message || json?.error || raw || `HTTP ${status || "request failed"}`);
+  const code = typeof json?.code === "string" ? json.code : routeNotFound ? "route_not_found" : undefined;
+  return { status, message, ...(code ? { code } : {}) };
+}
+
+function courierFailure<T>(status: number, message: string, code?: string): CourierApiResult<T> {
+  return { ok: false, error: { status, message, ...(code ? { code } : {}) } };
+}
+
+function expireWarehouseSessionAfterCourier401() {
+  saveWarehouseAuth({ accessToken: null, refreshToken: null });
+  leaveWarehouseSocket();
+  sendWarehouseHint("auth_expired");
+  sendStatus();
+}
+
+async function courierAdminProfile(event: IpcMainInvokeEvent): Promise<CourierApiResult<any>> {
+  if (!isTrustedCourierIpcSender(event)) return courierFailure(403, "Forbidden", "untrusted_ipc_sender");
+  if (courierProfilePromise) return courierProfilePromise;
+  const request = (async (): Promise<CourierApiResult<any>> => {
+    try {
+      const result = await warehouseRequestJson("/api/auth/me", { method: "GET", timeoutMs: 8000 });
+      if (result.status === 401) expireWarehouseSessionAfterCourier401();
+      if (!result.ok) return { ok: false, error: courierApiError(result.status, result.json, "/api/auth/me") };
+      return { ok: true, data: result.json };
+    } catch (error) {
+      return courierFailure(0, String((error as Error)?.message || error), "auth_request_failed");
+    }
+  })();
+  courierProfilePromise = request;
+  try {
+    return await request;
+  } finally {
+    if (courierProfilePromise === request) courierProfilePromise = null;
+  }
+}
+
+async function requireCourierAdmin(event: IpcMainInvokeEvent): Promise<CourierApiResult<true>> {
+  const profile = await courierAdminProfile(event);
+  if (!profile.ok) return profile;
+  if (profile.data?.role !== "admin" || profile.data?.is_active !== true) {
+    return courierFailure(403, "Forbidden", "admin_required");
+  }
+  return { ok: true, data: true };
+}
+
+async function courierAuthenticatedRequest<T>(
+  event: IpcMainInvokeEvent,
+  path: string,
+  opts: { method?: string; json?: unknown; timeoutMs?: number } = {},
+): Promise<CourierApiResult<T>> {
+  const access = await requireCourierAdmin(event);
+  if (!access.ok) return access;
+  try {
+    const result = await warehouseRequestJson(path, { ...opts, timeoutMs: opts.timeoutMs ?? 12000 });
+    if (result.status === 401) expireWarehouseSessionAfterCourier401();
+    if (!result.ok) return { ok: false, error: courierApiError(result.status, result.json, path) };
+    return { ok: true, data: result.json as T };
+  } catch (error) {
+    return courierFailure(0, String((error as Error)?.message || error), "request_failed");
+  }
+}
+
+function validateCourierId(value: unknown): number | null {
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+function validateCourierPhone(value: unknown): string | null {
+  const phone = String(value ?? "");
+  return /^\+998\d{9}$/.test(phone) ? phone : null;
+}
+
+function validateCourierEmail(value: unknown): boolean {
+  return typeof value === "string" && value.length <= 255 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function validateCourierUpdate(value: unknown): CourierUpdatePayload | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const input = value as Record<string, unknown>;
+  const allowed = new Set(["phone", "email", "display_name", "password", "is_active"]);
+  const keys = Object.keys(input);
+  if (!keys.length || keys.some((key) => !allowed.has(key))) return null;
+  const output: CourierUpdatePayload = {};
+  if ("phone" in input) {
+    const phone = validateCourierPhone(input.phone);
+    if (!phone) return null;
+    output.phone = phone;
+  }
+  if ("email" in input) {
+    if (input.email !== null && input.email !== "" && !validateCourierEmail(input.email)) return null;
+    output.email = input.email === "" ? null : (input.email as string | null);
+  }
+  if ("display_name" in input) {
+    if (input.display_name !== null && typeof input.display_name !== "string") return null;
+    output.display_name = input.display_name === "" ? null : (input.display_name as string | null);
+  }
+  if ("password" in input) {
+    if (typeof input.password !== "string" || input.password.length < 8) return null;
+    output.password = input.password;
+  }
+  if ("is_active" in input) {
+    if (typeof input.is_active !== "boolean") return null;
+    output.is_active = input.is_active;
+  }
+  return output;
 }
 
 function nextWarehouseRequestId(prefix: string): string {
@@ -1481,7 +1629,85 @@ ipcMain.handle("window:close", async () => {
   mainWindow?.close();
 });
 
+ipcMain.handle("couriers:adminStatus", async (event): Promise<CourierApiResult<{ isAdmin: boolean }>> => {
+  const profile = await courierAdminProfile(event);
+  if (!profile.ok) return profile;
+  return {
+    ok: true,
+    data: { isAdmin: profile.data?.role === "admin" && profile.data?.is_active === true },
+  };
+});
+
+ipcMain.handle("couriers:list", async (event): Promise<CourierApiResult<CourierRecord[]>> => {
+  const result = await courierAuthenticatedRequest<unknown>(event, "/api/users", { method: "GET" });
+  if (!result.ok) return result;
+  if (!Array.isArray(result.data)) return courierFailure(502, "Unexpected users response", "invalid_response");
+  const couriers = result.data.filter((user: any) => user && user.role === "courier") as CourierRecord[];
+  return { ok: true, data: couriers };
+});
+
+ipcMain.handle("couriers:options", async (event): Promise<CourierApiResult<CourierOption[]>> => {
+  const result = await courierAuthenticatedRequest<{ items?: unknown }>(event, "/api/admin/couriers/options", { method: "GET" });
+  if (!result.ok) return result;
+  if (!Array.isArray(result.data?.items)) return courierFailure(502, "Unexpected courier options response", "invalid_response");
+  const items = result.data.items.filter(
+    (item: any): item is CourierOption => item && typeof item.id === "string" && typeof item.name === "string",
+  );
+  return { ok: true, data: items };
+});
+
+ipcMain.handle("couriers:get", async (event, rawId: unknown): Promise<CourierApiResult<CourierRecord>> => {
+  const id = validateCourierId(rawId);
+  if (!id) return courierFailure(400, "Valid user ID required", "invalid_user_id");
+  const result = await courierAuthenticatedRequest<CourierRecord>(event, `/api/users/${id}`, { method: "GET" });
+  if (!result.ok) return result;
+  if (result.data?.role !== "courier") return courierFailure(404, "Not found", "not_found");
+  return result;
+});
+
+ipcMain.handle("couriers:create", async (event, rawPayload: unknown): Promise<CourierApiResult<CourierRecord>> => {
+  if (!rawPayload || typeof rawPayload !== "object" || Array.isArray(rawPayload)) {
+    return courierFailure(400, "JSON object required", "invalid_payload");
+  }
+  const input = rawPayload as Record<string, unknown>;
+  const allowed = new Set(["ms_courier_id", "phone", "password", "email"]);
+  if (Object.keys(input).some((key) => !allowed.has(key))) return courierFailure(400, "Invalid create fields", "invalid_payload");
+  if (typeof input.ms_courier_id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.ms_courier_id)) {
+    return courierFailure(400, "Valid ms_courier_id required", "invalid_ms_courier_id");
+  }
+  const phone = validateCourierPhone(input.phone);
+  if (!phone) return courierFailure(400, "Valid +998 phone required", "invalid_phone");
+  if (typeof input.password !== "string" || input.password.length < 8) {
+    return courierFailure(400, "Password (min 8 chars) required", "invalid_password");
+  }
+  if (input.email !== undefined && input.email !== null && input.email !== "" && !validateCourierEmail(input.email)) {
+    return courierFailure(400, "Invalid email", "invalid_email");
+  }
+  const payload = {
+    ms_courier_id: input.ms_courier_id,
+    phone,
+    password: input.password,
+    ...(typeof input.email === "string" && input.email ? { email: input.email } : {}),
+  };
+  return courierAuthenticatedRequest<CourierRecord>(event, "/api/admin/couriers", { method: "POST", json: payload });
+});
+
+ipcMain.handle("couriers:update", async (event, rawId: unknown, rawPayload: unknown): Promise<CourierApiResult<{ success: boolean }>> => {
+  const id = validateCourierId(rawId);
+  if (!id) return courierFailure(400, "Valid user ID required", "invalid_user_id");
+  const payload = validateCourierUpdate(rawPayload);
+  if (!payload) return courierFailure(400, "No valid updatable fields", "invalid_payload");
+  return courierAuthenticatedRequest<{ success: boolean }>(event, `/api/users/${id}`, { method: "PATCH", json: payload });
+});
+
+ipcMain.handle("couriers:deactivate", async (event, rawId: unknown): Promise<CourierApiResult<{ success: boolean }>> => {
+  const id = validateCourierId(rawId);
+  if (!id) return courierFailure(400, "Valid user ID required", "invalid_user_id");
+  return courierAuthenticatedRequest<{ success: boolean }>(event, `/api/users/${id}`, { method: "DELETE" });
+});
+
 ipcMain.handle("warehouse:login", async (_evt, payload: { phone: string; password: string }) => {
+  courierProfilePromise = null;
   const phone = String(payload?.phone || "").trim().replace(/\s+/g, "");
   const password = String(payload?.password || "");
   if (!phone || !password) throw new Error("phone and password required");
@@ -1509,6 +1735,7 @@ ipcMain.handle("warehouse:login", async (_evt, payload: { phone: string; passwor
 });
 
 ipcMain.handle("warehouse:logout", async () => {
+  courierProfilePromise = null;
   const refresh = warehouseAuth().refreshToken;
   saveWarehouseAuth({ accessToken: null, refreshToken: null });
   leaveWarehouseSocket();

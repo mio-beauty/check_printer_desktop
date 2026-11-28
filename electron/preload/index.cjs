@@ -47,4 +47,11 @@ contextBridge.exposeInMainWorld("checkPrinter", {
     ipcRenderer.invoke("warehouse:pickingFinish", { queueId, reason_code, comment }),
   warehousePickingFail: (queueId, reason_code, comment) =>
     ipcRenderer.invoke("warehouse:pickingFail", { queueId, reason_code, comment }),
+  couriersAdminStatus: () => ipcRenderer.invoke("couriers:adminStatus"),
+  couriersList: () => ipcRenderer.invoke("couriers:list"),
+  couriersOptions: () => ipcRenderer.invoke("couriers:options"),
+  couriersGet: (userId) => ipcRenderer.invoke("couriers:get", userId),
+  couriersCreate: (payload) => ipcRenderer.invoke("couriers:create", payload),
+  couriersUpdate: (userId, payload) => ipcRenderer.invoke("couriers:update", userId, payload),
+  couriersDeactivate: (userId) => ipcRenderer.invoke("couriers:deactivate", userId),
 });

@@ -4,6 +4,7 @@ import * as React from "react"
 import {
     Frame,
     PieChart,
+    Truck,
     PanelLeftClose,
     PanelLeftOpen,
 } from "lucide-react"
@@ -22,12 +23,14 @@ import {
 type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
     warehouseName?: string | null
     warehousePhone?: string | null
+    showCouriers?: boolean
     onLogout: () => Promise<void>
 }
 
 export function AppSidebar({
     warehouseName,
     warehousePhone,
+    showCouriers = false,
     onLogout,
     ...props
 }: AppSidebarProps) {
@@ -98,6 +101,9 @@ export function AppSidebar({
                             url: "/status",
                             icon: PieChart,
                         },
+                        ...(showCouriers
+                            ? [{ name: "Курьеры", url: "/couriers", icon: Truck }]
+                            : []),
                     ]}
                 />
             </SidebarContent>
